@@ -1,10 +1,6 @@
 # Vanguard RS - The Privacy-First Security Dashboard
-![Vanguard RS disclaimer](image.png)
-_Disclaimer_
 
-![Vanguard RS](image-2.png)
-_Vanguard RS_
-
+![Vanguard RS](screenshot.png)
 *A hyper-performant, privacy-first security analysis toolkit forged in 100% Rust, presented in a sleek and interactive TUI dashboard.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -12,6 +8,20 @@ _Vanguard RS_
 [![Under Development](https://img.shields.io/badge/status-in%20development-brightgreen.svg)]()
 
 ---
+
+## ⚠️ Disclaimer
+
+**Vanguard RS** is a powerful security analysis toolkit designed for educational purposes and for security professionals to assess assets they are explicitly authorized to test.
+
+The unauthorized scanning of computer systems and networks is **illegal** and **unethical**. Laws regarding unauthorized scanning vary by jurisdiction, but it is widely considered a criminal offense. Users of this software are expected to act responsibly and in accordance with all applicable local, state, and federal laws.
+
+By downloading, installing, or using Vanguard RS, you acknowledge and agree to the following terms:
+
+1.  **Authorized Use Only:** You will only use this software to scan systems and networks that you own or for which you have obtained explicit, written permission from the owner.
+2.  **Full Responsibility:** You are solely responsible for your actions. The author(s) and contributor(s) of this project assume **no liability** and are not responsible for any misuse, damage, or legal consequences caused by the use or misuse of this program.
+3.  **No Warranty:** This software is provided "as is," without warranty of any kind, express or implied.
+
+Use this tool to make the internet a safer place, not to cause harm. **Always act ethically.**
 
 ## The Mission
 
