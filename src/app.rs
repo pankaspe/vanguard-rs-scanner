@@ -44,11 +44,12 @@ pub struct App {
     pub active_analysis_tab: AnalysisTab,
     pub filtered_findings: Vec<AnalysisResult>,
     pub analysis_list_state: ratatui::widgets::ListState,
+    pub displayed_score: u8,
 }
 
 impl App {
     pub fn new() -> Self {
-        Self {
+        Self {  
             should_quit: false,
             state: AppState::Idle,
             input: String::new(),
@@ -59,6 +60,7 @@ impl App {
             active_analysis_tab: AnalysisTab::default(),
             filtered_findings: Vec::new(),
             analysis_list_state: ratatui::widgets::ListState::default(),
+            displayed_score: 0,
         }
     }
     
@@ -123,6 +125,13 @@ impl App {
     pub fn on_tick(&mut self) {
         if matches!(self.state, AppState::Scanning) {
             self.spinner_frame = (self.spinner_frame + 1) % SPINNER_CHARS.len();
+        }
+
+        if matches!(self.state, AppState::Finished) {
+            if self.displayed_score < self.summary.score {
+                // Incrementa di 2 per un'animazione più veloce
+                self.displayed_score = (self.displayed_score + 2).min(self.summary.score);
+            }
         }
     }
 
