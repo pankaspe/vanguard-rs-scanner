@@ -4,26 +4,28 @@ use crate::app::{App, AppState};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Gauge, Paragraph},
-    text::Line, // Importa Line
+    text::{Line, Span},
 };
 
 pub fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
     let summary_block = Block::default().borders(Borders::ALL).title("Summary");
     
-    // Modifichiamo il layout per fare spazio al rating
+    // Layout modificato per includere la sezione delle tecnologie
     let summary_chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(2), // Per "Overall Score" e il numero
-            Constraint::Length(1), // Per il testo di valutazione (es. "Excellent")
-            Constraint::Length(2), // Per il Gauge
-            Constraint::Min(3),    // Per i dettagli dei problemi
+            Constraint::Length(2),      // Per "Overall Score" e il numero
+            Constraint::Length(1),      // Per il testo di valutazione (es. "Excellent")
+            Constraint::Length(2),      // Per il Gauge
+            Constraint::Percentage(50), // Per i dettagli dei problemi
+            Constraint::Percentage(50), // Per le tecnologie identificate
         ])
         .split(summary_block.inner(area));
 
     frame.render_widget(summary_block, area);
 
+    // Se la scansione non è finita, non mostriamo nulla all'interno
     if !matches!(app.state, AppState::Finished) {
         return;
     }
@@ -34,7 +36,7 @@ pub fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
         .alignment(Alignment::Center);
     frame.render_widget(score_text, summary_chunks[0]);
 
-    // --- NUOVO: Rating Text ---
+    // --- Rating Text ---
     let (rating_text, rating_style) = match app.summary.score {
         90..=100 => ("Excellent", Style::default().fg(Color::Green)),
         75..=89 => ("Good", Style::default().fg(Color::Cyan)),
@@ -47,7 +49,6 @@ pub fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(rating_paragraph, summary_chunks[1]);
 
     // --- Gauge Chart (Animato) ---
-    // Ora usa `displayed_score` per il rendering!
     let score_gauge = Gauge::default()
         .percent(app.displayed_score as u16)
         .label("")
@@ -72,4 +73,22 @@ pub fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
         ]),
     ]);
     frame.render_widget(Paragraph::new(details_text), summary_chunks[3]);
+
+    // --- Sezione Tecnologie ---
+    let tech_block = Block::default().title("Technologies".bold());
+    let mut tech_lines = Vec::new();
+    if let Some(report) = &app.scan_report {
+        if !report.fingerprint_results.technologies.is_empty() {
+            for tech in &report.fingerprint_results.technologies {
+                tech_lines.push(Line::from(vec![
+                    Span::raw("- "),
+                    Span::styled(tech.name.clone(), Style::default().fg(Color::Cyan)),
+                ]));
+            }
+        } else {
+            tech_lines.push(Line::from("  Not identified."));
+        }
+    }
+    let tech_paragraph = Paragraph::new(tech_lines).block(tech_block);
+    frame.render_widget(tech_paragraph, summary_chunks[4]);
 }
