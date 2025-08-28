@@ -1,10 +1,11 @@
 // src/ui/widgets/results.rs
 
-use crate::app::{App, AppState};
+use crate::app::{App, AppState, SPINNER_CHARS};
 use crate::core::models::{AnalysisResult, HeaderInfo, ScanReport, Severity};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, Wrap},
+    text::Line,
 };
 
 pub fn render_results(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -19,10 +20,16 @@ pub fn render_results(frame: &mut Frame, app: &mut App, area: Rect) {
             frame.render_widget(instructions, area);
         }
         AppState::Scanning => {
-            let scanning_text = Paragraph::new("Scanning... Please wait.")
-                .block(results_block)
-                .style(Style::default().fg(Color::Cyan))
-                .alignment(Alignment::Center);
+            // 2. COSTRUIAMO IL TESTO ANIMATO
+            let spinner_char = SPINNER_CHARS[app.spinner_frame];
+            let scanning_text = Paragraph::new(
+                Line::from(vec![
+                    Span::styled(format!("{} ", spinner_char), Style::default().fg(Color::Cyan)),
+                    Span::raw("Scanning... Please wait."),
+                ])
+            )
+            .block(results_block)
+            .alignment(Alignment::Center);
             frame.render_widget(scanning_text, area);
         }
         AppState::Finished => {

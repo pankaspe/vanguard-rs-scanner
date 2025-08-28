@@ -1,6 +1,7 @@
 // src/main.rs
 
-use chrono::Local; 
+use crate::app::{App, AppState, ExportStatus};
+use chrono::Local;
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind,
@@ -19,8 +20,6 @@ mod app;
 mod core;
 mod ui;
 
-use app::{App, AppState, ExportStatus};
-
 #[tokio::main]
 async fn main() -> Result<()> {
     // --- Setup ---
@@ -37,7 +36,6 @@ async fn main() -> Result<()> {
         terminal.draw(|frame| ui::render(&mut app, frame))?;
 
         if event::poll(Duration::from_millis(100))? {
-            // Unico gestore eventi per mantenere la logica pulita
             handle_events(&mut app, &tx).await?;
         }
 
@@ -46,6 +44,11 @@ async fn main() -> Result<()> {
             app.state = AppState::Finished;
             app.update_summary();
         }
+
+        // --- LA CHIAMATA MANCANTE! ---
+        // Questa riga viene eseguita a ogni ciclo del loop,
+        // permettendo allo stato dell'app (come lo spinner) di aggiornarsi.
+        app.on_tick();
     }
 
     // --- Restore Terminal ---
@@ -105,20 +108,16 @@ async fn handle_idle_input(app: &mut App, key_code: KeyCode, tx: &mpsc::Sender<c
 /// Gestisce l'input quando il report è visualizzato (Finished)
 fn handle_finished_input(app: &mut App, key_code: KeyCode) {
     match key_code {
-        KeyCode::Char('q') => app.quit(),
-        KeyCode::Char('n') => app.reset(), // 'N' per una nuova scansione
+        KeyCode::Char('q') | KeyCode::Char('Q') => app.quit(),
+        KeyCode::Char('n') | KeyCode::Char('N') => app.reset(),
         KeyCode::Char('e') | KeyCode::Char('E') => {
-            // --- LOGICA DI EXPORT ---
             if let Some(report) = &app.scan_report {
-                // 1. Serializza il report in JSON
                 match serde_json::to_string_pretty(report) {
                     Ok(json_data) => {
-                        // 2. Crea un nome di file univoco
                         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
                         let target_domain = app.input.split_once("://").unwrap_or(("", &app.input)).1;
                         let filename = format!("{}-{}.json", target_domain.replace('/', "_"), timestamp);
                         
-                        // 3. Scrivi il file
                         match fs::write(&filename, json_data) {
                             Ok(_) => app.export_status = ExportStatus::Success(filename),
                             Err(e) => app.export_status = ExportStatus::Error(e.to_string()),
@@ -127,7 +126,7 @@ fn handle_finished_input(app: &mut App, key_code: KeyCode) {
                     Err(e) => app.export_status = ExportStatus::Error(e.to_string()),
                 }
             }
-        },
+        }
         KeyCode::Up => app.scroll_up(),
         KeyCode::Down => app.scroll_down(),
         _ => {}

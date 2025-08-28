@@ -3,6 +3,8 @@
 use crate::core::models::ScanReport;
 use ratatui::widgets::ScrollbarState;
 
+pub const SPINNER_CHARS: [char; 4] = ['|', '/', '-', '\\'];
+
 pub enum ExportStatus {
     Idle,
     Success(String),
@@ -31,6 +33,7 @@ pub struct App {
     pub scroll_offset: usize,
     pub report_scroll_state: ScrollbarState,
     pub export_status: ExportStatus,
+    pub spinner_frame: usize,
 }
 
 impl App {
@@ -44,6 +47,7 @@ impl App {
             scroll_offset: 0,
             report_scroll_state: ScrollbarState::default(),
             export_status: ExportStatus::Idle,
+            spinner_frame: 0,
         }
     }
 
@@ -79,7 +83,13 @@ impl App {
         }
     }
 
-    pub fn on_tick(&mut self) {}
+    pub fn on_tick(&mut self) {
+        // 4. AGGIUNGIAMO LA LOGICA DI ANIMAZIONE
+        // Fa avanzare il frame dello spinner solo quando siamo in stato di scansione.
+        if matches!(self.state, AppState::Scanning) {
+            self.spinner_frame = (self.spinner_frame + 1) % SPINNER_CHARS.len();
+        }
+    }
 
     pub fn quit(&mut self) { self.should_quit = true; }
 
@@ -91,5 +101,6 @@ impl App {
         self.scroll_offset = 0;
         self.report_scroll_state = ScrollbarState::default();
         self.export_status = ExportStatus::Idle;
+        self.spinner_frame = 0;
     }
 }
