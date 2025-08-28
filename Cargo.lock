@@ -2788,6 +2788,7 @@ dependencies = [
  "scraper",
  "serde",
  "tokio",
+ "url",
  "x509-parser",
 ]
 

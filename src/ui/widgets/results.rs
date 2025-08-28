@@ -4,35 +4,53 @@ use crate::app::{App, AppState};
 use crate::core::models::{AnalysisResult, HeaderInfo, ScanReport, Severity};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, Wrap},
+
 };
 
-/// Renders the main content area based on the application state.
-pub fn render_results(frame: &mut Frame, app: &App, area: Rect) {
-    let results_block = Block::default().borders(Borders::ALL).title("Scan Results");
+
+pub fn render_results(frame: &mut Frame, app: &mut App, area: Rect) { // Nota: `app` è mutabile
+    let results_block = Block::default().borders(Borders::ALL).title("Detailed Report (Scroll with ↑/↓)");
 
     match app.state {
         AppState::Idle => {
-            let instructions = Paragraph::new(
-                "Enter a domain and press Enter to start the scan.\nPress 'q' to quit.\nClick anywhere to start a new scan.",
-            )
-            .block(results_block)
-            .wrap(Wrap { trim: true });
+            let instructions = Paragraph::new("Enter a domain and press Enter to start...")
+                .block(results_block)
+                .wrap(Wrap { trim: true })
+                .alignment(Alignment::Center);
             frame.render_widget(instructions, area);
         }
         AppState::Scanning => {
             let scanning_text = Paragraph::new("Scanning... Please wait.")
                 .block(results_block)
-                .style(Style::default().fg(Color::Cyan));
+                .style(Style::default().fg(Color::Cyan))
+                .alignment(Alignment::Center);
             frame.render_widget(scanning_text, area);
         }
         AppState::Finished => {
             if let Some(report) = &app.scan_report {
                 let results_text = build_results_text(report);
+                
+                // 2. CALCOLA LA LUNGHEZZA DEL CONTENUTO E AGGIORNA LO STATO
+                let line_count = results_text.lines.len();
+                app.report_scroll_state = app.report_scroll_state.content_length(line_count);
+
                 let results_paragraph = Paragraph::new(results_text)
                     .block(results_block)
-                    .wrap(Wrap { trim: true });
+                    .wrap(Wrap { trim: true })
+                    .scroll((app.scroll_offset as u16, 0)); 
+                
+                // 3. RENDERIZZA IL PARAGRAFO
                 frame.render_widget(results_paragraph, area);
+
+                // 4. RENDERIZZA LA BARRA DI SCORRIMENTO
+                frame.render_stateful_widget(
+                    Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                        .begin_symbol(Some("↑"))
+                        .end_symbol(Some("↓")),
+                    area, // Usa la stessa area del paragrafo
+                    &mut app.report_scroll_state,
+                );
             }
         }
     }
