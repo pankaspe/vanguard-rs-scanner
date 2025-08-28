@@ -77,6 +77,7 @@ pub struct ScanReport {
     pub dns_results: Option<DnsResults>,
     pub ssl_results: Option<SslResults>,
     pub headers_results: Option<HeadersResults>,
+    pub fingerprint_results: Option<FingerprintResults>,
 }
 
 
@@ -96,4 +97,25 @@ pub struct HeadersResults {
     pub x_content_type_options: Option<HeaderInfo>,
     pub error: Option<String>,
     pub analysis: Vec<AnalysisResult>,
+}
+
+
+// --- NUOVE STRUCT PER IL FINGERPRINTING ---
+
+/// Represents a single technology identified on the target.
+/// We add a `category` for better reporting.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)] // Aggiunto Eq, Hash per HashSet
+pub struct Technology {
+    pub name: String,
+    pub category: String,
+    pub version: Option<String>,
+}
+
+/// A container for all technology fingerprinting results.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FingerprintResults {
+    pub technologies: Vec<Technology>,
+    pub error: Option<String>,
+    // Nota: non aggiungiamo `analysis` qui, perché il fingerprinting è informativo,
+    // non basato su "problemi" con severità.
 }

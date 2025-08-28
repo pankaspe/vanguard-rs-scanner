@@ -1,7 +1,7 @@
 // src/ui/widgets/results.rs
 
 use crate::app::{App, AppState};
-use crate::core::models::{AnalysisResult, HeaderInfo, ScanReport, Severity}; // Aggiunto HeaderInfo
+use crate::core::models::{AnalysisResult, HeaderInfo, ScanReport, Severity};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Paragraph, Wrap},
@@ -84,7 +84,6 @@ fn build_results_text(report: &ScanReport) -> Text {
         if let Some(err) = &headers.error {
             lines.push(Line::from(Span::styled(format!("Error: {}", err), Style::default().fg(Color::Red))));
         } else {
-            // LA CORREZIONE È QUI: Specifichiamo il tipo `&Option<HeaderInfo>` esplicitamente.
             let mut render_header = |name: &str, info: &Option<HeaderInfo>| {
                 if let Some(header_info) = info {
                     let (style, status) = if header_info.found { (Style::default().fg(Color::Green), "Present") } else { (Style::default().fg(Color::Yellow), "Missing") };
@@ -98,6 +97,24 @@ fn build_results_text(report: &ScanReport) -> Text {
         }
         lines.push(Line::from("")); // Spacer
     }
+
+    // --- Technology Fingerprint Section ---
+    if let Some(fingerprint) = &report.fingerprint_results {
+        lines.push(Line::from(Span::styled("Technology Fingerprint:", Style::default().bold().underlined())));
+        if let Some(err) = &fingerprint.error {
+            lines.push(Line::from(Span::styled(format!("Error: {}", err), Style::default().fg(Color::Red))));
+        } else if fingerprint.technologies.is_empty() {
+            lines.push(Line::from("  No specific technologies identified."));
+        } else {
+            for tech in &fingerprint.technologies {
+                lines.push(Line::from(vec![
+                    Span::styled(format!("- {}", tech.name), Style::default().fg(Color::Cyan)),
+                    Span::raw(format!(" ({})", tech.category)),
+                ]));
+            }
+        }
+        lines.push(Line::from("")); // Spacer
+    }
     
     // --- Combined Analysis Section ---
     lines.push(Line::from(Span::styled("Analysis:", Style::default().bold().underlined())));
@@ -107,7 +124,7 @@ fn build_results_text(report: &ScanReport) -> Text {
         .collect();
 
     if all_analyses.is_empty() {
-        lines.push(Line::from(Span::styled("  ✓ No issues found.", Style::default().fg(Color::Green))));
+        lines.push(Line::from(Span::styled("  ✓ No security issues found.", Style::default().fg(Color::Green))));
     } else {
         for finding in all_analyses {
             lines.push(format_analysis_result(finding));
