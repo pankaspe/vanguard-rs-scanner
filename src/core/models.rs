@@ -3,29 +3,29 @@
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 
-/// Represents the severity of a finding.
-/// This will be crucial for coloring the UI output.
-/// We derive a few traits:
-/// - `Debug`: To allow printing the struct for debugging.
-/// - `Clone`: To allow copying the struct.
-/// - `Serialize`, `Deserialize`: For potential future use (like saving reports).
-/// - `PartialEq`: To allow comparisons (e.g., `severity == Severity::Critical`).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+// --- Core Data Models ---
+// These are fundamental types used across multiple scanner modules.
+
+/// Represents the severity of an analysis finding.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Severity {
     Critical,
     Warning,
     Info,
 }
 
-/// Represents a single analysis result or finding.
+/// Represents a single, actionable finding from a scan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisResult {
+    /// The severity level of the finding.
     pub severity: Severity,
-    pub code: String, // e.g., "DNS_DMARC_MISSING"
+    /// A machine-readable code for the finding (e.g., "DNS_DMARC_MISSING").
+    pub code: String,
 }
 
-/// Holds the raw data and analysis for the SPF record.
-/// `Default` is derived to easily create a new, empty instance.
+// --- DNS Scanner Models ---
+
+/// Holds the data for a discovered SPF record.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SpfRecord {
     pub found: bool,
@@ -33,12 +33,13 @@ pub struct SpfRecord {
     pub error: Option<String>,
 }
 
-/// Holds the raw data and analysis for the DMARC record.
+/// Holds the data for a discovered DMARC record.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DmarcRecord {
     pub found: bool,
     pub record: Option<String>,
-    pub policy: Option<String>, // e.g., "none", "quarantine", "reject"
+    /// The extracted policy (p=) value, e.g., "none", "quarantine".
+    pub policy: Option<String>,
     pub error: Option<String>,
 }
 
@@ -50,6 +51,7 @@ pub struct DnsResults {
     pub analysis: Vec<AnalysisResult>,
 }
 
+// --- SSL/TLS Scanner Models ---
 
 /// Represents key information extracted from an SSL certificate.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -71,15 +73,7 @@ pub struct SslResults {
     pub analysis: Vec<AnalysisResult>,
 }
 
-/// The top-level struct that holds the entire scan report.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ScanReport {
-    pub dns_results: Option<DnsResults>,
-    pub ssl_results: Option<SslResults>,
-    pub headers_results: Option<HeadersResults>,
-    pub fingerprint_results: Option<FingerprintResults>,
-}
-
+// --- HTTP Headers Scanner Models ---
 
 /// Represents the presence and value of a single HTTP header.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -99,12 +93,10 @@ pub struct HeadersResults {
     pub analysis: Vec<AnalysisResult>,
 }
 
-
-// --- NUOVE STRUCT PER IL FINGERPRINTING ---
+// --- Fingerprint Scanner Models ---
 
 /// Represents a single technology identified on the target.
-/// We add a `category` for better reporting.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)] // Aggiunto Eq, Hash per HashSet
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Technology {
     pub name: String,
     pub category: String,
@@ -116,6 +108,17 @@ pub struct Technology {
 pub struct FingerprintResults {
     pub technologies: Vec<Technology>,
     pub error: Option<String>,
-    // Nota: non aggiungiamo `analysis` qui, perché il fingerprinting è informativo,
-    // non basato su "problemi" con severità.
+}
+
+// --- Top-Level Report ---
+
+/// The top-level struct that aggregates all scan results into a single report.
+/// All fields are guaranteed to be present, even if a scan fails. In case of
+/// failure, the respective struct's `error` field will be populated.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ScanReport {
+    pub dns_results: DnsResults,
+    pub ssl_results: SslResults,
+    pub headers_results: HeadersResults,
+    pub fingerprint_results: FingerprintResults,
 }

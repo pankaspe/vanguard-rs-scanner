@@ -1,5 +1,6 @@
 // src/main.rs
 
+use chrono::Local; 
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind,
@@ -8,6 +9,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::*;
+use std::fs;
 use std::io::{stdout, Result};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -17,7 +19,7 @@ mod app;
 mod core;
 mod ui;
 
-use app::{App, AppState};
+use app::{App, AppState, ExportStatus};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -57,6 +59,10 @@ async fn main() -> Result<()> {
 async fn handle_events(app: &mut App, tx: &mpsc::Sender<core::models::ScanReport>) -> Result<()> {
     if let Event::Key(key) = event::read()? {
         if key.kind == KeyEventKind::Press {
+            if !matches!(app.export_status, ExportStatus::Idle) {
+                app.export_status = ExportStatus::Idle;
+            }
+
             match app.state {
                 AppState::Idle => handle_idle_input(app, key.code, tx).await,
                 AppState::Finished => handle_finished_input(app, key.code),
@@ -101,7 +107,27 @@ fn handle_finished_input(app: &mut App, key_code: KeyCode) {
     match key_code {
         KeyCode::Char('q') => app.quit(),
         KeyCode::Char('n') => app.reset(), // 'N' per una nuova scansione
-        // KeyCode::Char('e') => { /* Logica di export qui */ },
+        KeyCode::Char('e') | KeyCode::Char('E') => {
+            // --- LOGICA DI EXPORT ---
+            if let Some(report) = &app.scan_report {
+                // 1. Serializza il report in JSON
+                match serde_json::to_string_pretty(report) {
+                    Ok(json_data) => {
+                        // 2. Crea un nome di file univoco
+                        let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+                        let target_domain = app.input.split_once("://").unwrap_or(("", &app.input)).1;
+                        let filename = format!("{}-{}.json", target_domain.replace('/', "_"), timestamp);
+                        
+                        // 3. Scrivi il file
+                        match fs::write(&filename, json_data) {
+                            Ok(_) => app.export_status = ExportStatus::Success(filename),
+                            Err(e) => app.export_status = ExportStatus::Error(e.to_string()),
+                        }
+                    }
+                    Err(e) => app.export_status = ExportStatus::Error(e.to_string()),
+                }
+            }
+        },
         KeyCode::Up => app.scroll_up(),
         KeyCode::Down => app.scroll_down(),
         _ => {}

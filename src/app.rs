@@ -1,7 +1,13 @@
 // src/app.rs
 
 use crate::core::models::ScanReport;
-use ratatui::widgets::ScrollbarState; // <-- 1. IMPORTA LO STATO DELLO SCROLL
+use ratatui::widgets::ScrollbarState;
+
+pub enum ExportStatus {
+    Idle,
+    Success(String),
+    Error(String),
+}
 
 pub enum AppState {
     Idle,
@@ -22,8 +28,9 @@ pub struct App {
     pub input: String,
     pub scan_report: Option<ScanReport>,
     pub summary: ScanSummary,
-    pub scroll_offset: usize, // Usiamo usize per coerenza con ScrollbarState
-    pub report_scroll_state: ScrollbarState, // <-- 2. AGGIUNGI LO STATO
+    pub scroll_offset: usize,
+    pub report_scroll_state: ScrollbarState,
+    pub export_status: ExportStatus,
 }
 
 impl App {
@@ -35,7 +42,8 @@ impl App {
             scan_report: None,
             summary: ScanSummary::default(),
             scroll_offset: 0,
-            report_scroll_state: ScrollbarState::default(), // <-- 3. INIZIALIZZA
+            report_scroll_state: ScrollbarState::default(),
+            export_status: ExportStatus::Idle,
         }
     }
 
@@ -48,14 +56,16 @@ impl App {
         self.scroll_offset = self.scroll_offset.saturating_add(1);
         self.report_scroll_state = self.report_scroll_state.position(self.scroll_offset);
     }
-
+    
     pub fn update_summary(&mut self) {
         if let Some(report) = &self.scan_report {
-            let all_analyses: Vec<_> = report.dns_results.iter().flat_map(|r| &r.analysis)
-                .chain(report.ssl_results.iter().flat_map(|r| &r.analysis))
-                .chain(report.headers_results.iter().flat_map(|r| &r.analysis))
+            // FIX: Directly access the .analysis field on each result struct.
+            // No need for .iter().flat_map() anymore.
+            let all_analyses: Vec<&crate::core::models::AnalysisResult> = report.dns_results.analysis.iter()
+                .chain(report.ssl_results.analysis.iter())
+                .chain(report.headers_results.analysis.iter())
                 .collect();
-
+            
             let criticals = all_analyses.iter().filter(|a| matches!(a.severity, crate::core::models::Severity::Critical)).count();
             let warnings = all_analyses.iter().filter(|a| matches!(a.severity, crate::core::models::Severity::Warning)).count();
 
@@ -71,9 +81,7 @@ impl App {
 
     pub fn on_tick(&mut self) {}
 
-    pub fn quit(&mut self) {
-        self.should_quit = true;
-    }
+    pub fn quit(&mut self) { self.should_quit = true; }
 
     pub fn reset(&mut self) {
         self.state = AppState::Idle;
@@ -81,6 +89,7 @@ impl App {
         self.scan_report = None;
         self.summary = ScanSummary::default();
         self.scroll_offset = 0;
-        self.report_scroll_state = ScrollbarState::default(); // <-- 4. RESETTA ANCHE LO STATO
+        self.report_scroll_state = ScrollbarState::default();
+        self.export_status = ExportStatus::Idle;
     }
 }

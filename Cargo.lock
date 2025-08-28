@@ -2787,6 +2787,7 @@ dependencies = [
  "rust-i18n",
  "scraper",
  "serde",
+ "serde_json",
  "tokio",
  "url",
  "x509-parser",
