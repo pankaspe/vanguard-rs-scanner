@@ -3,9 +3,7 @@
 use crate::app::{App, AppState, ExportStatus};
 use chrono::Local;
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind,
-    },
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -22,7 +20,7 @@ mod ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // --- Setup ---
+    // --- Setup (identico) ---
     stdout().execute(EnterAlternateScreen)?;
     stdout().execute(EnableMouseCapture)?;
     enable_raw_mode()?;
@@ -43,29 +41,26 @@ async fn main() -> Result<()> {
             app.scan_report = Some(report);
             app.state = AppState::Finished;
             app.update_summary();
+            app.update_filtered_findings();
         }
 
-        // --- LA CHIAMATA MANCANTE! ---
-        // Questa riga viene eseguita a ogni ciclo del loop,
-        // permettendo allo stato dell'app (come lo spinner) di aggiornarsi.
         app.on_tick();
     }
 
-    // --- Restore Terminal ---
+    // --- Restore Terminal (identico) ---
     stdout().execute(LeaveAlternateScreen)?;
     stdout().execute(DisableMouseCapture)?;
     disable_raw_mode()?;
     Ok(())
 }
 
-/// Gestore eventi separato per migliorare la leggibilità
+/// Gestore eventi separato
 async fn handle_events(app: &mut App, tx: &mpsc::Sender<core::models::ScanReport>) -> Result<()> {
     if let Event::Key(key) = event::read()? {
         if key.kind == KeyEventKind::Press {
-            if !matches!(app.export_status, ExportStatus::Idle) {
-                app.export_status = ExportStatus::Idle;
-            }
-
+            // FIX: Rimuoviamo il blocco che resettava lo stato di export qui.
+            // Lo stato verrà resettato solo quando si inizia una nuova scansione (`app.reset()`).
+            
             match app.state {
                 AppState::Idle => handle_idle_input(app, key.code, tx).await,
                 AppState::Finished => handle_finished_input(app, key.code),
@@ -80,6 +75,11 @@ async fn handle_events(app: &mut App, tx: &mpsc::Sender<core::models::ScanReport
 
 /// Gestisce l'input quando l'app è in attesa (Idle)
 async fn handle_idle_input(app: &mut App, key_code: KeyCode, tx: &mpsc::Sender<core::models::ScanReport>) {
+    // Prima di gestire l'input, se c'era un messaggio di export, lo puliamo.
+    if !matches!(app.export_status, ExportStatus::Idle) {
+        app.export_status = ExportStatus::Idle;
+    }
+
     match key_code {
         KeyCode::Char('q') => app.quit(),
         KeyCode::Char(c) => app.input.push(c),
@@ -107,6 +107,11 @@ async fn handle_idle_input(app: &mut App, key_code: KeyCode, tx: &mpsc::Sender<c
 
 /// Gestisce l'input quando il report è visualizzato (Finished)
 fn handle_finished_input(app: &mut App, key_code: KeyCode) {
+    // Prima di gestire l'input, se c'era un messaggio di export, lo puliamo.
+    if !matches!(app.export_status, ExportStatus::Idle) {
+        app.export_status = ExportStatus::Idle;
+    }
+    
     match key_code {
         KeyCode::Char('q') | KeyCode::Char('Q') => app.quit(),
         KeyCode::Char('n') | KeyCode::Char('N') => app.reset(),
@@ -126,9 +131,11 @@ fn handle_finished_input(app: &mut App, key_code: KeyCode) {
                     Err(e) => app.export_status = ExportStatus::Error(e.to_string()),
                 }
             }
-        }
-        KeyCode::Up => app.scroll_up(),
-        KeyCode::Down => app.scroll_down(),
+        },
+        KeyCode::Right | KeyCode::Char('l') => app.next_analysis_tab(),
+        KeyCode::Left | KeyCode::Char('h') => app.previous_analysis_tab(),
+        KeyCode::Down | KeyCode::Char('j') => app.select_next_finding(),
+        KeyCode::Up | KeyCode::Char('k') => app.select_previous_finding(),
         _ => {}
     }
 }

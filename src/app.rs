@@ -1,9 +1,18 @@
 // src/app.rs
 
-use crate::core::models::ScanReport;
-use ratatui::widgets::ScrollbarState;
+use crate::core::models::{AnalysisResult, ScanReport};
+use strum::{Display, EnumIter, FromRepr};
 
 pub const SPINNER_CHARS: [char; 4] = ['|', '/', '-', '\\'];
+
+#[derive(Debug, Default, Clone, Copy, Display, FromRepr, EnumIter, PartialEq, Eq)]
+pub enum AnalysisTab {
+    #[default]
+    All,
+    Critical,
+    Warning,
+    Info,
+}
 
 pub enum ExportStatus {
     Idle,
@@ -30,10 +39,11 @@ pub struct App {
     pub input: String,
     pub scan_report: Option<ScanReport>,
     pub summary: ScanSummary,
-    pub scroll_offset: usize,
-    pub report_scroll_state: ScrollbarState,
     pub export_status: ExportStatus,
     pub spinner_frame: usize,
+    pub active_analysis_tab: AnalysisTab,
+    pub filtered_findings: Vec<AnalysisResult>,
+    pub analysis_list_state: ratatui::widgets::ListState,
 }
 
 impl App {
@@ -44,28 +54,95 @@ impl App {
             input: String::new(),
             scan_report: None,
             summary: ScanSummary::default(),
-            scroll_offset: 0,
-            report_scroll_state: ScrollbarState::default(),
             export_status: ExportStatus::Idle,
             spinner_frame: 0,
+            active_analysis_tab: AnalysisTab::default(),
+            filtered_findings: Vec::new(),
+            analysis_list_state: ratatui::widgets::ListState::default(),
+        }
+    }
+    
+    pub fn next_analysis_tab(&mut self) {
+        let current_index = self.active_analysis_tab as usize;
+        let next_index = current_index.saturating_add(1);
+        self.active_analysis_tab = AnalysisTab::from_repr(next_index).unwrap_or(self.active_analysis_tab);
+        self.update_filtered_findings();
+    }
+
+    pub fn previous_analysis_tab(&mut self) {
+        let current_index = self.active_analysis_tab as usize;
+        let previous_index = current_index.saturating_sub(1);
+        self.active_analysis_tab = AnalysisTab::from_repr(previous_index).unwrap_or(self.active_analysis_tab);
+        self.update_filtered_findings();
+    }
+    
+    pub fn select_next_finding(&mut self) {
+        if self.filtered_findings.is_empty() { return; }
+        let i = match self.analysis_list_state.selected() {
+            Some(i) => (i + 1) % self.filtered_findings.len(),
+            None => 0,
+        };
+        self.analysis_list_state.select(Some(i));
+    }
+
+    pub fn select_previous_finding(&mut self) {
+        if self.filtered_findings.is_empty() { return; }
+        let i = match self.analysis_list_state.selected() {
+            Some(i) => if i == 0 { self.filtered_findings.len() - 1 } else { i - 1 },
+            None => 0,
+        };
+        self.analysis_list_state.select(Some(i));
+    }
+    
+    pub fn update_filtered_findings(&mut self) {
+        if let Some(report) = &self.scan_report {
+            let all_findings: Vec<_> = report.dns_results.analysis.iter()
+                .chain(report.ssl_results.analysis.iter())
+                .chain(report.headers_results.analysis.iter())
+                .cloned().collect();
+
+            self.filtered_findings = if self.active_analysis_tab == AnalysisTab::All {
+                all_findings
+            } else {
+                all_findings.into_iter().filter(|f| {
+                    let severity_str = format!("{:?}", f.severity);
+                    let tab_str = format!("{:?}", self.active_analysis_tab);
+                    severity_str.eq_ignore_ascii_case(&tab_str)
+                }).collect()
+            };
+
+            // SE LA LISTA NON È VUOTA, SELEZIONA IL PRIMO ELEMENTO
+            if !self.filtered_findings.is_empty() {
+                self.analysis_list_state.select(Some(0));
+            } else {
+                self.analysis_list_state.select(None);
+            }
         }
     }
 
-    pub fn scroll_up(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(1);
-        self.report_scroll_state = self.report_scroll_state.position(self.scroll_offset);
+    pub fn on_tick(&mut self) {
+        if matches!(self.state, AppState::Scanning) {
+            self.spinner_frame = (self.spinner_frame + 1) % SPINNER_CHARS.len();
+        }
     }
 
-    pub fn scroll_down(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_add(1);
-        self.report_scroll_state = self.report_scroll_state.position(self.scroll_offset);
+    pub fn quit(&mut self) { self.should_quit = true; }
+
+    pub fn reset(&mut self) {
+        self.state = AppState::Idle;
+        self.input = String::new();
+        self.scan_report = None;
+        self.summary = ScanSummary::default();
+        self.export_status = ExportStatus::Idle;
+        self.spinner_frame = 0;
+        self.active_analysis_tab = AnalysisTab::default();
+        self.filtered_findings = Vec::new();
+        self.analysis_list_state.select(None);
     }
     
     pub fn update_summary(&mut self) {
         if let Some(report) = &self.scan_report {
-            // FIX: Directly access the .analysis field on each result struct.
-            // No need for .iter().flat_map() anymore.
-            let all_analyses: Vec<&crate::core::models::AnalysisResult> = report.dns_results.analysis.iter()
+            let all_analyses: Vec<_> = report.dns_results.analysis.iter()
                 .chain(report.ssl_results.analysis.iter())
                 .chain(report.headers_results.analysis.iter())
                 .collect();
@@ -81,26 +158,5 @@ impl App {
                 warning_issues: warnings,
             };
         }
-    }
-
-    pub fn on_tick(&mut self) {
-        // 4. AGGIUNGIAMO LA LOGICA DI ANIMAZIONE
-        // Fa avanzare il frame dello spinner solo quando siamo in stato di scansione.
-        if matches!(self.state, AppState::Scanning) {
-            self.spinner_frame = (self.spinner_frame + 1) % SPINNER_CHARS.len();
-        }
-    }
-
-    pub fn quit(&mut self) { self.should_quit = true; }
-
-    pub fn reset(&mut self) {
-        self.state = AppState::Idle;
-        self.input = String::new();
-        self.scan_report = None;
-        self.summary = ScanSummary::default();
-        self.scroll_offset = 0;
-        self.report_scroll_state = ScrollbarState::default();
-        self.export_status = ExportStatus::Idle;
-        self.spinner_frame = 0;
     }
 }
