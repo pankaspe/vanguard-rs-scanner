@@ -1,6 +1,6 @@
 // src/ui/widgets/footer.rs
 
-use crate::app::{App, AppState, ExportStatus}; // <-- Importa ExportStatus
+use crate::app::{App, AppState, ExportStatus};
 use ratatui::{
     prelude::*,
     style::{Color, Style, Stylize},
@@ -10,6 +10,13 @@ use ratatui::{
 
 pub fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
     let spans = match app.state {
+        // NUOVO CASO: Cosa mostrare quando il disclaimer è attivo.
+        AppState::Disclaimer => Line::from(vec![
+            Span::raw("Press "),
+            Span::styled("Enter", Style::new().bold().fg(Color::Yellow)),
+            Span::raw(" to Acknowledge and Continue"),
+        ]),
+        
         AppState::Idle => Line::from(vec![
             Span::raw("Press "),
             Span::styled("Enter", Style::new().bold().fg(Color::Yellow)),
@@ -17,8 +24,8 @@ pub fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
             Span::styled("Q", Style::new().bold().fg(Color::Yellow)),
             Span::raw(" to quit."),
         ]),
+
         AppState::Finished => {
-            // Controlla prima lo stato dell'export!
             match &app.export_status {
                 ExportStatus::Idle => Line::from(vec![
                     Span::styled("[N]", Style::new().bold().fg(Color::Yellow)),

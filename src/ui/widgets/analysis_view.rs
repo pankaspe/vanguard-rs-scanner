@@ -86,7 +86,26 @@ pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
             }
         }
     } else {
-        let p = Paragraph::new("No issues in this category.").alignment(Alignment::Center).block(detail_block);
+        // --- NUOVA LOGICA PER I COMPLIMENTI ---
+        // Controlliamo se ci sono problemi IN TOTALE.
+        let total_issues = app.summary.critical_issues + app.summary.warning_issues;
+        
+        let placeholder_text = if total_issues == 0 && app.active_analysis_tab == AnalysisTab::All {
+            // Se non ci sono problemi di sorta, mostriamo il messaggio di complimenti.
+            Text::from(vec![
+                Line::from(""),
+                Line::from("✓ EXCELLENT SECURITY POSTURE".bold().fg(Color::Green)),
+                Line::from(""),
+                Line::from("No critical or warning issues were found during the scan."),
+                Line::from(""),
+                Line::from("This is the mark of a meticulous and professional setup. Well done!"),
+            ])
+        } else {
+            // Altrimenti, mostriamo il messaggio standard "nessun problema in questa categoria".
+            Text::from("No issues in this category.")
+        };
+
+        let p = Paragraph::new(placeholder_text).alignment(Alignment::Center).block(detail_block);
         frame.render_widget(p, chunks[2]);
     }
 }

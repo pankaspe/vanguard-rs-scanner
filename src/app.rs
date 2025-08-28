@@ -20,7 +20,10 @@ pub enum ExportStatus {
     Error(String),
 }
 
+#[derive(Default, PartialEq, Eq)]
 pub enum AppState {
+    #[default]
+    Disclaimer, // L'app ora parte in questo stato
     Idle,
     Scanning,
     Finished,
@@ -51,7 +54,7 @@ impl App {
     pub fn new() -> Self {
         Self {  
             should_quit: false,
-            state: AppState::Idle,
+            state: AppState::default(),
             input: String::new(),
             scan_report: None,
             summary: ScanSummary::default(),

@@ -4,5 +4,5 @@
 pub mod analysis_view; // Il nostro nuovo widget
 pub mod footer;
 pub mod input;
-// `results.rs` non serve più
+pub mod disclaimer_popup; 
 pub mod summary;

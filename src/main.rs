@@ -58,10 +58,14 @@ async fn main() -> Result<()> {
 async fn handle_events(app: &mut App, tx: &mpsc::Sender<core::models::ScanReport>) -> Result<()> {
     if let Event::Key(key) = event::read()? {
         if key.kind == KeyEventKind::Press {
-            // FIX: Rimuoviamo il blocco che resettava lo stato di export qui.
-            // Lo stato verrà resettato solo quando si inizia una nuova scansione (`app.reset()`).
-            
             match app.state {
+                // NUOVA LOGICA: Se il disclaimer è attivo, ascolta solo Invio
+                AppState::Disclaimer => {
+                    if key.code == KeyCode::Enter {
+                        // Passa allo stato normale dell'applicazione
+                        app.state = AppState::Idle;
+                    }
+                }
                 AppState::Idle => handle_idle_input(app, key.code, tx).await,
                 AppState::Finished => handle_finished_input(app, key.code),
                 AppState::Scanning => {
