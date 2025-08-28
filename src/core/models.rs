@@ -1,6 +1,7 @@
 // src/core/models.rs
 
 use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
 
 /// Represents the severity of a finding.
 /// This will be crucial for coloring the UI output.
@@ -47,4 +48,34 @@ pub struct DnsResults {
     pub spf: Option<SpfRecord>,
     pub dmarc: Option<DmarcRecord>,
     pub analysis: Vec<AnalysisResult>,
+}
+
+
+/// Represents key information extracted from an SSL certificate.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CertificateInfo {
+    pub subject_name: String,
+    pub issuer_name: String,
+    pub not_before: Option<DateTime<Utc>>,
+    pub not_after: Option<DateTime<Utc>>,
+    pub days_until_expiry: Option<i64>,
+}
+
+/// A container for all SSL/TLS related scan results.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SslResults {
+    pub certificate_found: bool,
+    pub is_valid: bool,
+    pub certificate_info: Option<CertificateInfo>,
+    pub error: Option<String>,
+    pub analysis: Vec<AnalysisResult>,
+}
+
+/// The top-level struct that holds the entire scan report.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ScanReport {
+    pub dns_results: Option<DnsResults>,
+    pub ssl_results: Option<SslResults>,
+    // In futuro:
+    // pub headers_results: Option<HeadersResults>,
 }

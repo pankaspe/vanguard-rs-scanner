@@ -36,9 +36,8 @@ async fn main() -> Result<()> {
 
         // --- Event Handling ---
         if event::poll(Duration::from_millis(100))? {
-            // Leggiamo l'evento UNA SOLA VOLTA e usiamo match per gestirlo
             match event::read()? {
-                // Evento: Un tasto è stato premuto
+                // Event: A key was pressed
                 Event::Key(key) => {
                     if key.kind == KeyEventKind::Press {
                         match app.state {
@@ -53,8 +52,9 @@ async fn main() -> Result<()> {
                                     let tx_clone = tx.clone();
                                     let target = app.input.clone();
                                     tokio::spawn(async move {
-                                        let results = core::scanner::run_dns_scan(&target).await;
-                                        let _ = tx_clone.send(results).await;
+                                        // Call the main orchestrator function
+                                        let report = core::scanner::run_full_scan(&target).await;
+                                        let _ = tx_clone.send(report).await;
                                     });
                                 }
                                 _ => {}
@@ -67,30 +67,28 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-                // Evento: Il mouse è stato usato
+                // Event: The mouse was used
                 Event::Mouse(mouse) => {
-                    // Usiamo 'match' anche qui per controllare il tipo di evento mouse
                     if matches!(mouse.kind, MouseEventKind::Down(_)) {
                         if matches!(app.state, AppState::Finished) {
                             app.reset();
                         }
                     }
                 }
-                // Altri eventi (come il resize della finestra) possono essere gestiti qui
                 _ => {}
             }
         }
 
-        // --- Gestione Risultati ---
-        if let Ok(results) = rx.try_recv() {
-            app.dns_results = Some(results);
+        // --- Result Handling ---
+        if let Ok(report) = rx.try_recv() {
+            app.scan_report = Some(report);
             app.state = AppState::Finished;
         }
 
         app.on_tick();
     }
 
-    // --- Ripristino Terminale ---
+    // --- Restore Terminal ---
     stdout().execute(LeaveAlternateScreen)?;
     stdout().execute(DisableMouseCapture)?;
     disable_raw_mode()?;

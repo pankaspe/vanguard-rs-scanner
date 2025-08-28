@@ -1,70 +1,58 @@
 // src/core/scanner.rs
 
-// Import all the necessary data models from our new `models.rs` file.
-use crate::core::models::{DnsResults, SpfRecord, DmarcRecord, AnalysisResult, Severity};
-// Import the asynchronous resolver from the Hickory library.
-use hickory_resolver::TokioAsyncResolver;
-// Import the types for the resolver configuration.
+// --- IMPORTS ---
+// Models: Importiamo tutte le strutture dati di cui abbiamo bisogno.
+use crate::core::models::{
+    AnalysisResult, CertificateInfo, DmarcRecord, DnsResults, ScanReport, Severity, SpfRecord,
+    SslResults,
+};
+// Libraries: Importiamo le librerie per DNS, SSL, date e operazioni asincrone.
+use chrono::{DateTime, Utc};
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+use hickory_resolver::TokioAsyncResolver;
+use native_tls::TlsConnector;
+use std::net::TcpStream;
+use tokio::task::spawn_blocking; // Cruciale per eseguire codice bloccante in un ambiente async.
+use x509_parser::prelude::*;
 
-/// The main function that orchestrates the DNS scan.
-/// It accepts a domain name and returns a `DnsResults` struct, complete with analysis.
+// --- DNS SCANNER MODULE ---
+
 pub async fn run_dns_scan(target: &str) -> DnsResults {
-    // --- STEP 1: Input Normalization ---
-    // Many DNS records (like SPF/DMARC) are on the root domain, not on subdomains like 'www'.
-    // This logic removes the 'www.' prefix to ensure lookups are performed on the correct domain.
     let root_target = if let Some(stripped) = target.strip_prefix("www.") {
         stripped
     } else {
         target
     };
 
-    // --- STEP 2: DNS Resolver Creation ---
-    // Initialize the client that will perform the DNS queries.
-    // We use the default configuration for broad compatibility.
     let resolver = TokioAsyncResolver::tokio(
         ResolverConfig::default(),
         ResolverOpts::default(),
     );
 
-    // --- STEP 3: Parallel Scan Execution ---
-    // `tokio::join!` is a powerful macro that runs multiple asynchronous operations concurrently.
-    // This significantly speeds up the scan, as we don't have to wait for one query to finish
-    // before starting the next.
     let (spf_result, dmarc_result) = tokio::join!(
         lookup_spf(&resolver, root_target),
         lookup_dmarc(&resolver, root_target)
     );
 
-    // --- STEP 4: Assembly and Analysis ---
-    // Create a `DnsResults` struct with the raw data obtained.
     let mut results = DnsResults {
         spf: Some(spf_result),
         dmarc: Some(dmarc_result),
-        analysis: Vec::new(), // Initialize the 'analysis' field as an empty vector.
+        analysis: Vec::new(),
     };
 
-    // Call our analysis function to interpret the raw results.
     results.analysis = analyze_dns_results(&results);
-
-    // Return the complete struct, which now contains both the data and the analysis.
     results
 }
 
-/// Analyzes the raw DNS scan results and produces a list of findings and recommendations.
 fn analyze_dns_results(results: &DnsResults) -> Vec<AnalysisResult> {
     let mut analyses = Vec::new();
-
-    // Rule 1: DMARC record analysis.
     if let Some(dmarc) = &results.dmarc {
         if !dmarc.found {
-            // If DMARC is missing, it's a critical issue for email security.
             analyses.push(AnalysisResult {
                 severity: Severity::Critical,
                 code: "DNS_DMARC_MISSING".to_string(),
             });
         } else if let Some(policy) = &dmarc.policy {
-            // If DMARC exists but the policy is 'none', it's a warning, as it's not enforcing protection.
             if policy == "none" {
                 analyses.push(AnalysisResult {
                     severity: Severity::Warning,
@@ -73,59 +61,162 @@ fn analyze_dns_results(results: &DnsResults) -> Vec<AnalysisResult> {
             }
         }
     }
-
-    // Rule 2: SPF record analysis.
     if let Some(spf) = &results.spf {
         if !spf.found {
-            // A missing SPF record is a warning, as it weakens email sender verification.
             analyses.push(AnalysisResult {
                 severity: Severity::Warning,
                 code: "DNS_SPF_MISSING".to_string(),
             });
         }
     }
-
-    // Return the list of all identified issues/recommendations.
     analyses
 }
 
-
-/// Performs a TXT record lookup for SPF.
 async fn lookup_spf(resolver: &TokioAsyncResolver, target: &str) -> SpfRecord {
     match resolver.txt_lookup(target).await {
         Ok(txt_records) => {
-            // A domain can have multiple TXT records; we need to find the correct one.
             for record in txt_records.iter() {
                 if record.to_string().starts_with("v=spf1") {
                     return SpfRecord { found: true, record: Some(record.to_string()), ..Default::default() };
                 }
             }
-            // If the loop finishes, no SPF record was found.
             SpfRecord { found: false, error: Some("No SPF TXT record found.".to_string()), ..Default::default() }
         },
         Err(e) => SpfRecord { found: false, error: Some(format!("DNS Error: {}", e)), ..Default::default() }
     }
 }
 
-/// Performs a TXT record lookup for DMARC.
 async fn lookup_dmarc(resolver: &TokioAsyncResolver, target: &str) -> DmarcRecord {
-    // By convention, the DMARC record is located on the '_dmarc' subdomain.
     let dmarc_target = format!("_dmarc.{}", target);
     match resolver.txt_lookup(dmarc_target).await {
         Ok(txt_records) => {
             if let Some(record) = txt_records.iter().next() {
                 let record_str = record.to_string();
-                // We perform a basic parse to extract the policy (p=), which is the most critical piece of information.
                 let policy = record_str.split(';')
                     .find(|s| s.trim().starts_with("p="))
                     .and_then(|s| s.trim().split('=').nth(1))
                     .map(|s| s.to_string());
-                
                 DmarcRecord { found: true, record: Some(record_str), policy, error: None }
             } else {
                 DmarcRecord { found: false, error: Some("No DMARC record found.".to_string()), ..Default::default() }
             }
         },
         Err(e) => DmarcRecord { found: false, error: Some(format!("DNS Error: {}", e)), ..Default::default() }
+    }
+}
+
+// --- SSL/TLS SCANNER MODULE ---
+
+pub async fn run_ssl_scan(target: &str) -> SslResults {
+    let target_owned = target.to_string();
+    spawn_blocking(move || {
+        let connector = match TlsConnector::new() {
+            Ok(c) => c,
+            Err(e) => {
+                let mut r = SslResults { error: Some(format!("TlsConnector Error: {}", e)), ..Default::default() };
+                r.analysis = analyze_ssl_results(&r);
+                return r;
+            }
+        };
+        let stream = match TcpStream::connect((&target_owned[..], 443)) {
+            Ok(s) => s,
+            Err(e) => {
+                let mut r = SslResults { error: Some(format!("TCP Connection Error: {}", e)), ..Default::default() };
+                r.analysis = analyze_ssl_results(&r);
+                return r;
+            }
+        };
+        let stream = match connector.connect(&target_owned, stream) {
+            Ok(s) => s,
+            Err(e) => {
+                let mut r = SslResults { error: Some(format!("TLS Handshake Error: {}", e)), is_valid: false, ..Default::default() };
+                r.analysis = analyze_ssl_results(&r);
+                return r;
+            }
+        };
+        let cert = match stream.peer_certificate() {
+            Ok(Some(c)) => c,
+            _ => {
+                let mut r = SslResults { error: Some("Server did not provide a certificate.".to_string()), ..Default::default() };
+                r.analysis = analyze_ssl_results(&r);
+                return r;
+            }
+        };
+        let cert_der = match cert.to_der() {
+            Ok(der) => der,
+            Err(_) => return SslResults { error: Some("Could not convert certificate to DER format.".to_string()), ..Default::default() },
+        };
+        match parse_x509_certificate(&cert_der) {
+            Ok((_, x509)) => {
+                let validity = x509.validity();
+                let not_after = asn1_time_to_chrono_utc(&validity.not_after);
+                let not_before = asn1_time_to_chrono_utc(&validity.not_before);
+                let days_until_expiry = not_after.signed_duration_since(Utc::now()).num_days();
+                let is_valid = Utc::now() > not_before && Utc::now() < not_after;
+                let mut results = SslResults {
+                    certificate_found: true,
+                    is_valid,
+                    certificate_info: Some(CertificateInfo {
+                        subject_name: x509.subject().to_string(),
+                        issuer_name: x509.issuer().to_string(),
+                        not_before: Some(not_before),
+                        not_after: Some(not_after),
+                        days_until_expiry: Some(days_until_expiry),
+                    }),
+                    error: None,
+                    analysis: Vec::new(),
+                };
+                results.analysis = analyze_ssl_results(&results);
+                results
+            }
+            Err(e) => SslResults { error: Some(format!("X.509 Certificate Parse Error: {}", e)), ..Default::default() },
+        }
+    })
+    .await
+    .unwrap_or_else(|e| SslResults { error: Some(format!("Task panicked: {}", e)), ..Default::default() })
+}
+
+fn asn1_time_to_chrono_utc(time: &ASN1Time) -> DateTime<Utc> {
+    DateTime::from_timestamp(time.timestamp(), 0).unwrap_or_default()
+}
+
+fn analyze_ssl_results(results: &SslResults) -> Vec<AnalysisResult> {
+    let mut analyses = Vec::new();
+    if !results.certificate_found {
+        if results.error.is_some() {
+            analyses.push(AnalysisResult {
+                severity: Severity::Critical,
+                code: "SSL_HANDSHAKE_FAILED".to_string(),
+            });
+            return analyses;
+        }
+    }
+    if !results.is_valid {
+         analyses.push(AnalysisResult {
+            severity: Severity::Critical,
+            code: "SSL_EXPIRED".to_string(),
+        });
+    }
+    if let Some(days) = results.certificate_info.as_ref().and_then(|ci| ci.days_until_expiry) {
+        if (0..=30).contains(&days) {
+            analyses.push(AnalysisResult {
+                severity: Severity::Warning,
+                code: "SSL_EXPIRING_SOON".to_string(),
+            });
+        }
+    }
+    analyses
+}
+
+// --- SCAN ORCHESTRATOR ---
+
+pub async fn run_full_scan(target: &str) -> ScanReport {
+    let (dns_results, ssl_results) = tokio::join!(
+        run_dns_scan(target),
+        run_ssl_scan(target)
+    );
+    ScanReport {
+        dns_results: Some(dns_results),
+        ssl_results: Some(ssl_results),
     }
 }

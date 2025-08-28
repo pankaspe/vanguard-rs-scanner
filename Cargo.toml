@@ -7,7 +7,9 @@ edition = "2024"
 chrono = {version = "0.4.41", features = ["serde"]}
 crossterm = "0.29.0"
 hickory-resolver = { version = "0.24.1", features = ["tokio", "tokio-native-tls"] }
+native-tls = "0.2.14"
 ratatui = {version = "0.29.0", features = ["all-widgets"]}
 rust-i18n = "3.1.5"
 serde = {version = "1.0.219", features = ["derive"]}
 tokio = {version = "1.47.1", features = ["full"]}
+x509-parser = "0.17.0"

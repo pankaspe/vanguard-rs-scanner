@@ -1,7 +1,7 @@
 // src/app.rs
 
 // We import the DnsResults struct, which will hold our scan data.
-use crate::core::models::DnsResults;
+use crate::core::models::ScanReport;
 
 /// Represents the different states the application can be in.
 pub enum AppState {
@@ -14,31 +14,23 @@ pub enum AppState {
 pub struct App {
     pub should_quit: bool,
     pub state: AppState,
-    /// The text currently in the input box.
     pub input: String,
-    /// The results of the last DNS scan.
-    /// It's an Option because there are no results before the first scan.
-    pub dns_results: Option<DnsResults>,
+    // Ora usiamo la struct del report completo
+    pub scan_report: Option<ScanReport>,
 }
 
 impl App {
-    /// Creates a new App instance with default values.
     pub fn new() -> Self {
         Self {
             should_quit: false,
             state: AppState::Idle,
             input: String::new(),
-            dns_results: None,
+            scan_report: None, // <-- Aggiornato
         }
     }
 
-    /// A simple method to be called on each "tick" of the application loop.
-    pub fn on_tick(&mut self) {
-        // For now, this doesn't do anything, but it's a good placeholder
-        // for future logic, like animations or timed updates.
-    }
+    pub fn on_tick(&mut self) {}
 
-    /// Sets the `should_quit` flag to true, causing the main loop to exit.
     pub fn quit(&mut self) {
         self.should_quit = true;
     }
@@ -46,6 +38,6 @@ impl App {
     pub fn reset(&mut self) {
         self.state = AppState::Idle;
         self.input = String::new();
-        self.dns_results = None;
+        self.scan_report = None; // <-- Aggiornato
     }
 }
