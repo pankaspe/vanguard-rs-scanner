@@ -76,6 +76,24 @@ pub struct SslResults {
 pub struct ScanReport {
     pub dns_results: Option<DnsResults>,
     pub ssl_results: Option<SslResults>,
-    // In futuro:
-    // pub headers_results: Option<HeadersResults>,
+    pub headers_results: Option<HeadersResults>,
+}
+
+
+/// Represents the presence and value of a single HTTP header.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HeaderInfo {
+    pub found: bool,
+    pub value: Option<String>,
+}
+
+/// A container for all HTTP security header scan results.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HeadersResults {
+    pub hsts: Option<HeaderInfo>,
+    pub csp: Option<HeaderInfo>,
+    pub x_frame_options: Option<HeaderInfo>,
+    pub x_content_type_options: Option<HeaderInfo>,
+    pub error: Option<String>,
+    pub analysis: Vec<AnalysisResult>,
 }

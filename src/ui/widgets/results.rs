@@ -1,7 +1,7 @@
 // src/ui/widgets/results.rs
 
 use crate::app::{App, AppState};
-use crate::core::models::{AnalysisResult, ScanReport, Severity};
+use crate::core::models::{AnalysisResult, HeaderInfo, ScanReport, Severity}; // Aggiunto HeaderInfo
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Paragraph, Wrap},
@@ -78,10 +78,32 @@ fn build_results_text(report: &ScanReport) -> Text {
         lines.push(Line::from("")); // Spacer
     }
     
+    // --- HTTP Headers Section ---
+    if let Some(headers) = &report.headers_results {
+        lines.push(Line::from(Span::styled("HTTP Security Headers:", Style::default().bold().underlined())));
+        if let Some(err) = &headers.error {
+            lines.push(Line::from(Span::styled(format!("Error: {}", err), Style::default().fg(Color::Red))));
+        } else {
+            // LA CORREZIONE È QUI: Specifichiamo il tipo `&Option<HeaderInfo>` esplicitamente.
+            let mut render_header = |name: &str, info: &Option<HeaderInfo>| {
+                if let Some(header_info) = info {
+                    let (style, status) = if header_info.found { (Style::default().fg(Color::Green), "Present") } else { (Style::default().fg(Color::Yellow), "Missing") };
+                    lines.push(Line::from(vec![Span::raw(format!("{}: ", name)), Span::styled(status, style)]));
+                }
+            };
+            render_header("Strict-Transport-Security", &headers.hsts);
+            render_header("Content-Security-Policy", &headers.csp);
+            render_header("X-Frame-Options", &headers.x_frame_options);
+            render_header("X-Content-Type-Options", &headers.x_content_type_options);
+        }
+        lines.push(Line::from("")); // Spacer
+    }
+    
     // --- Combined Analysis Section ---
     lines.push(Line::from(Span::styled("Analysis:", Style::default().bold().underlined())));
     let all_analyses: Vec<_> = report.dns_results.iter().flat_map(|r| &r.analysis)
         .chain(report.ssl_results.iter().flat_map(|r| &r.analysis))
+        .chain(report.headers_results.iter().flat_map(|r| &r.analysis))
         .collect();
 
     if all_analyses.is_empty() {
@@ -104,12 +126,20 @@ fn format_analysis_result(result: &AnalysisResult) -> Line {
     };
 
     let message = match result.code.as_str() {
+        // DNS Codes
         "DNS_DMARC_MISSING" => "DMARC record is missing. This is critical for email spoofing protection.",
         "DNS_DMARC_POLICY_NONE" => "DMARC policy is 'none'. It should be 'quarantine' or 'reject' for protection.",
         "DNS_SPF_MISSING" => "SPF record is missing. This can lead to email delivery issues.",
+        // SSL Codes
         "SSL_HANDSHAKE_FAILED" => "Could not establish a secure TLS connection with the server.",
         "SSL_EXPIRED" => "The SSL certificate is expired or not yet valid.",
         "SSL_EXPIRING_SOON" => "The SSL certificate will expire in less than 30 days.",
+        // Headers Codes
+        "HEADERS_REQUEST_FAILED" => "The HTTP request to fetch headers failed. The server might be down.",
+        "HEADERS_HSTS_MISSING" => "HSTS header is missing. This weakens protection against protocol downgrade attacks.",
+        "HEADERS_CSP_MISSING" => "CSP header is missing. This increases the risk of XSS attacks.",
+        "HEADERS_X_FRAME_OPTIONS_MISSING" => "X-Frame-Options header is missing, making the site vulnerable to clickjacking.",
+        "HEADERS_X_CONTENT_TYPE_OPTIONS_MISSING" => "X-Content-Type-Options header is missing. (Best Practice)",
         _ => "Unknown finding."
     };
 
