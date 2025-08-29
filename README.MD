@@ -1,4 +1,4 @@
-# Vanguard RS - The Privacy-First Security Dashboard
+# Vanguard RS - The scanner
 
 ![Vanguard RS](screenshot.png)
 *A hyper-performant, privacy-first security analysis toolkit forged in 100% Rust, presented in a sleek and interactive TUI dashboard.*
