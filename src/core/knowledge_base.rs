@@ -10,14 +10,18 @@ use std::fmt;
 /// This is used to group related issues together in the user interface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FindingCategory {
+    /// Findings related to DNS records (e.g., SPF, DMARC, DKIM, CAA).
     Dns,
+    /// Findings related to SSL/TLS certificates and configuration.
     Ssl,
+    /// Findings related to HTTP security headers.
     Http,
 }
 
 /// Implements the `Display` trait to provide a human-friendly name for each category.
 /// This is used for rendering titles in the UI.
 impl fmt::Display for FindingCategory {
+    /// Formats the `FindingCategory` enum for display.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FindingCategory::Dns => write!(f, "DNS Configuration"),
@@ -28,6 +32,10 @@ impl fmt::Display for FindingCategory {
 }
 
 /// A struct that holds all the detailed, human-readable information about a specific finding.
+///
+/// This is the core data structure of the knowledge base, containing all necessary
+/// information to present a finding to a user, including its severity, description,
+/// and remediation advice.
 pub struct FindingDetail {
     /// A unique, machine-readable identifier for the finding (e.g., "DNS_DMARC_MISSING").
     pub code: &'static str,
@@ -44,7 +52,9 @@ pub struct FindingDetail {
 }
 
 /// The centralized, static knowledge base of all possible findings.
-/// This array is the core data that drives the analysis reports.
+///
+/// This array is the core data that drives the analysis reports. Each entry provides
+/// the complete context for a specific `AnalysisResult` code.
 static FINDINGS: &[FindingDetail] = &[
     // --- DNS: Email Security & Domain Integrity ---
     FindingDetail {
@@ -105,7 +115,7 @@ static FINDINGS: &[FindingDetail] = &[
     },
 
     // --- SSL/TLS: Secure Communication Layer ---
-     FindingDetail {
+      FindingDetail {
         code: "SSL_HANDSHAKE_FAILED",
         title: "TLS Handshake Failed",
         category: FindingCategory::Ssl,
@@ -174,6 +184,15 @@ static FINDINGS: &[FindingDetail] = &[
 ];
 
 /// Retrieves the full detail for a given finding code from the static knowledge base.
+///
+/// # Arguments
+///
+/// * `code` - The machine-readable code for the finding.
+///
+/// # Returns
+///
+/// An `Option` containing a reference to the `FindingDetail` if the code is found,
+/// or `None` if the code does not exist in the knowledge base.
 pub fn get_finding_detail(code: &str) -> Option<&'static FindingDetail> {
     FINDINGS.iter().find(|f| f.code == code)
 }
