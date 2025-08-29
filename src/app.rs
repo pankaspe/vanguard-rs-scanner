@@ -34,6 +34,9 @@ pub struct ScanSummary {
     pub score: u8,
     pub critical_issues: usize,
     pub warning_issues: usize,
+    pub dns_check_passed: bool,
+    pub ssl_check_passed: bool,
+    pub headers_check_passed: bool,
 }
 
 pub struct App {
@@ -154,6 +157,7 @@ impl App {
     
     pub fn update_summary(&mut self) {
         if let Some(report) = &self.scan_report {
+            // Logica esistente per calcolare il punteggio
             let all_analyses: Vec<_> = report.dns_results.analysis.iter()
                 .chain(report.ssl_results.analysis.iter())
                 .chain(report.headers_results.analysis.iter())
@@ -161,14 +165,25 @@ impl App {
             
             let criticals = all_analyses.iter().filter(|a| matches!(a.severity, crate::core::models::Severity::Critical)).count();
             let warnings = all_analyses.iter().filter(|a| matches!(a.severity, crate::core::models::Severity::Warning)).count();
-
             let score = 100_i16.saturating_sub((criticals * 15) as i16).saturating_sub((warnings * 5) as i16);
             
+            // NUOVA LOGICA: Determina se ogni controllo è passato
+            // Un controllo passa se non ha NESSUN problema (né critico né warning)
+            let dns_check_passed = report.dns_results.analysis.is_empty();
+            let ssl_check_passed = report.ssl_results.analysis.is_empty();
+            let headers_check_passed = report.headers_results.analysis.is_empty();
+
             self.summary = ScanSummary {
                 score: if score < 0 { 0 } else { score as u8 },
                 critical_issues: criticals,
                 warning_issues: warnings,
+                dns_check_passed,
+                ssl_check_passed,
+                headers_check_passed,
             };
+            
+            // Azzeriamo l'animazione
+            self.displayed_score = 0;
         }
     }
 }
