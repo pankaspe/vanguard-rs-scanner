@@ -11,6 +11,11 @@ use strum::IntoEnumIterator;
 
 /// Renders the main analysis view, which includes tabs for filtering,
 /// a list of findings, and a details panel for the selected finding.
+///
+/// This function is the core of the TUI's analysis report section. It handles
+/// rendering based on the application's state (Idle, Scanning, Finished) and
+/// presents the scan findings in a user-friendly, interactive way with
+/// filtering tabs and a detailed view.
 pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
     // Create the main container block for the entire analysis section.
     let main_block = Block::default()
@@ -18,11 +23,13 @@ pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
         .title("Analysis Report (Navigate with ← → ↑ ↓)");
 
     // --- Handle non-finished states (Idle, Scanning) ---
+    // If the scan is not yet complete, display a status message instead of the report.
     if !matches!(app.state, AppState::Finished) {
         let content = match app.state {
             AppState::Idle => Paragraph::new("Scan results will appear here...")
                 .alignment(Alignment::Center),
             AppState::Scanning => {
+                // Display a spinning character to indicate activity.
                 let spinner_char = SPINNER_CHARS[app.spinner_frame];
                 Paragraph::new(
                     Line::from(vec![
@@ -45,13 +52,14 @@ pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),      // For the tabs
-            Constraint::Percentage(40), // For the list of findings
-            Constraint::Min(0),         // For the details of the selected finding
+            Constraint::Length(1),       // For the tabs
+            Constraint::Percentage(40),  // For the list of findings
+            Constraint::Min(0),          // For the details of the selected finding
         ])
         .split(inner_area);
 
     // --- Render Tabs ---
+    // The tabs widget allows users to filter findings by severity.
     let titles = AnalysisTab::iter().map(|t| format!(" {} ", t));
     let tabs = Tabs::new(titles)
         .select(app.active_analysis_tab as usize)
@@ -59,10 +67,10 @@ pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
         .highlight_style(Style::default().fg(Color::Yellow).bold());
     frame.render_widget(tabs, chunks[0]);
 
-    // --- NEW: Simplified List Generation with Category Prefix ---
-    // This approach is simpler and avoids state management issues with scrolling.
+    // --- Generate and Render Findings List ---
+    // This section populates the findings list based on the active tab's filter.
     let items: Vec<ListItem> = app.filtered_findings.iter().map(|f| {
-        // Default struct in case a finding is not in the knowledge base.
+        // Look up the finding details in the knowledge base.
         let default_detail = knowledge_base::FindingDetail {
             code: "",
             title: "Unknown Finding",
@@ -87,8 +95,7 @@ pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
             crate::core::models::Severity::Info => Style::default().fg(Color::Cyan),
         };
         
-        // Create a Line with multiple styled parts (Spans).
-        // This allows us to have different colors for the prefix and the title.
+        // Create a Line with multiple styled parts (Spans) for the list item.
         let line = Line::from(vec![
             Span::styled(category_prefix, Style::default().fg(Color::DarkGray)),
             Span::styled(detail.title, title_style),
@@ -97,14 +104,15 @@ pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
         ListItem::new(line)
     }).collect();
 
-    // The number of `items` now perfectly matches the number of `filtered_findings`,
-    // which fixes the scrolling issue.
+    // Render the list of findings. `render_stateful_widget` is used to maintain the
+    // scroll position and selection state.
     let findings_list = List::new(items)
         .block(Block::default().borders(Borders::TOP))
         .highlight_style(Style::new().bg(Color::DarkGray).add_modifier(Modifier::BOLD));
     frame.render_stateful_widget(findings_list, chunks[1], &mut app.analysis_list_state);
     
-    // --- Render the Details Panel (This logic remains the same) ---
+    // --- Render the Details Panel ---
+    // This section displays the description and remediation for the selected finding.
     let detail_block = Block::default().borders(Borders::TOP).title("Details");
     if let Some(selected_index) = app.analysis_list_state.selected() {
         // We can now safely use the selected_index to get the finding from the original list.
@@ -123,7 +131,7 @@ pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
             }
         }
     } else {
-        // Render a placeholder if nothing is selected.
+        // Render a placeholder if no finding is selected or no issues were found.
         render_placeholder_details(frame, app, detail_block, chunks[2]);
     }
 }
@@ -131,6 +139,7 @@ pub fn render_analysis_view(frame: &mut Frame, app: &mut App, area: Rect) {
 
 /// Helper function to render the placeholder text in the details panel.
 /// This is shown when no finding is selected or when the scan was perfect.
+/// It provides a congratulatory message for a clean scan.
 fn render_placeholder_details(frame: &mut Frame, app: &App, block: Block, area: Rect) {
     let total_issues = app.summary.critical_issues + app.summary.warning_issues;
     
