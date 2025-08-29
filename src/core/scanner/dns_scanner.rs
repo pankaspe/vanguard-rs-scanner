@@ -175,7 +175,7 @@ async fn lookup_dmarc(resolver: &TokioAsyncResolver, target: &str) -> DmarcRecor
 async fn lookup_dkim(resolver: &TokioAsyncResolver, target: &str) -> DkimResults {
     let mut found_records = Vec::new();
     for selector in COMMON_DKIM_SELECTORS {
-        let dkim_target = format!("{_selector}._domainkey.{target}", _selector = selector, target = target);
+        let dkim_target = format!("{selector}._domainkey.{target}");
         if let Ok(txt_records) = resolver.txt_lookup(dkim_target).await {
             for record in txt_records.iter() {
                 let record_str = record.to_string();
