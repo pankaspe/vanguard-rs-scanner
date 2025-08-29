@@ -68,7 +68,7 @@ This project began with a different stack (Tauri + SolidJS). It became clear tha
 -   **HTTP Client**: [Reqwest](https://github.com/seanmonstar/reqwest)
 -   **DNS Resolution**: [Hickory DNS](https://github.com/hickory-dns/hickory-dns)
 -   **HTML Parsing**: [Scraper](https://github.com/causal-agent/scraper)
--   **Certificate Parsing**: [x509-parser](https://github.com/rust-x509/x509-parser)
+-   **Certificate Parsing**: [x509-parser](https://github.com/rusticata/x509-parser)
 -   **URL Parsing**: [url](https://crates.io/crates/url)
 -   **Enum Utilities**: [Strum](https://crates.io/crates/strum)
 
