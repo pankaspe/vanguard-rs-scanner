@@ -48,9 +48,10 @@ pub struct DmarcRecord {
 pub struct DnsResults {
     pub spf: Option<SpfRecord>,
     pub dmarc: Option<DmarcRecord>,
+    pub dkim: Option<DkimResults>, // <-- NUOVO
+    pub caa: Option<CaaResults>,   // <-- NUOVO
     pub analysis: Vec<AnalysisResult>,
 }
-
 // --- SSL/TLS Scanner Models ---
 
 /// Represents key information extracted from an SSL certificate.
@@ -121,4 +122,29 @@ pub struct ScanReport {
     pub ssl_results: SslResults,
     pub headers_results: HeadersResults,
     pub fingerprint_results: FingerprintResults,
+}
+
+/// Holds data for a discovered DKIM record for a specific selector.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DkimSelectorRecord {
+    pub selector: String,
+    pub record: String,
+}
+
+/// A container for all DKIM-related findings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DkimResults {
+    pub found: bool,
+    /// A list of all DKIM records found for common selectors.
+    pub records: Vec<DkimSelectorRecord>,
+    pub error: Option<String>,
+}
+
+/// A container for all CAA-related findings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CaaResults {
+    pub found: bool,
+    /// A list of all CAA records found for the domain.
+    pub records: Vec<String>,
+    pub error: Option<String>,
 }

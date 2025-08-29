@@ -1,7 +1,6 @@
 // src/core/scanner/fingerprint_scanner.rs
 
 use crate::core::models::{FingerprintResults, Technology};
-use reqwest::header::HeaderMap;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use regex::Regex;

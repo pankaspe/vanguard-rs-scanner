@@ -1,8 +1,13 @@
+//! This module acts as the central "brain" of the scanner.
+//! It contains a static, read-only database of all possible security findings,
+//! complete with detailed, human-readable explanations and remediation steps.
+//! Making this data-driven allows for easy updates and maintenance of the scanner's intelligence.
+
 use crate::core::models::Severity;
 use std::fmt;
 
-// NUOVO ENUM: Definiamo le categorie dei problemi.
-// Aggiungiamo i "derive" per poterle poi ordinare facilmente.
+/// Defines the high-level categories for security findings.
+/// This is used to group related issues together in the user interface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FindingCategory {
     Dns,
@@ -10,7 +15,8 @@ pub enum FindingCategory {
     Http,
 }
 
-// NUOVO: Implementiamo il trait Display per stampare un nome leggibile per ogni categoria.
+/// Implements the `Display` trait to provide a human-friendly name for each category.
+/// This is used for rendering titles in the UI.
 impl fmt::Display for FindingCategory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -21,115 +27,153 @@ impl fmt::Display for FindingCategory {
     }
 }
 
-
-/// Contains detailed, human-readable information about a specific finding.
+/// A struct that holds all the detailed, human-readable information about a specific finding.
 pub struct FindingDetail {
+    /// A unique, machine-readable identifier for the finding (e.g., "DNS_DMARC_MISSING").
     pub code: &'static str,
+    /// A short, human-readable title for the finding.
     pub title: &'static str,
-    // NUOVO CAMPO: Aggiungiamo la categoria a ogni problema.
+    /// The category this finding belongs to.
     pub category: FindingCategory,
+    /// The severity level of the finding (e.g., Critical, Warning, Info).
     pub severity: Severity,
+    /// A detailed but easy-to-understand explanation of what the finding means and why it's a problem.
     pub description: &'static str,
+    /// Clear, actionable steps the user can take to fix the issue.
     pub remediation: &'static str,
 }
 
-/// A centralized knowledge base of all possible findings.
-const FINDINGS: &[FindingDetail] = &[
-    // --- DNS ---
+/// The centralized, static knowledge base of all possible findings.
+/// This array is the core data that drives the analysis reports.
+static FINDINGS: &[FindingDetail] = &[
+    // --- DNS: Email Security & Domain Integrity ---
     FindingDetail {
         code: "DNS_DMARC_MISSING",
         title: "DMARC Record Missing",
-        category: FindingCategory::Dns, // <-- Aggiunto
+        category: FindingCategory::Dns,
         severity: Severity::Critical,
-        description: "WHAT IT IS: DMARC is an email authentication policy that protects your domain from being used for email spoofing, phishing, and other cybercrimes by telling receiving mail servers how to handle unauthenticated mail.",
-        remediation: "HOW TO FIX: Add a DMARC record to your domain's DNS settings. Start with a simple policy like 'v=DMARC1; p=none;' and gradually move to 'p=quarantine' or 'p=reject' after monitoring reports."
+        description: "DMARC is an email authentication policy that protects your domain from being used for email spoofing and phishing. It tells receiving mail servers how to handle emails that fail authentication checks.",
+        remediation: "Add a DMARC record to your domain's DNS settings. Start with a monitoring policy like 'v=DMARC1; p=none;' and gradually move to 'p=quarantine' or 'p=reject' after analyzing reports."
     },
     FindingDetail {
         code: "DNS_DMARC_POLICY_NONE",
         title: "DMARC Policy is 'none'",
-        category: FindingCategory::Dns, // <-- Aggiunto
+        category: FindingCategory::Dns,
         severity: Severity::Warning,
-        description: "WHAT IT IS: Your DMARC policy is in 'monitoring only' mode. It reports fraudulent emails but does not instruct receivers to block or quarantine them, offering no real protection.",
-        remediation: "HOW TO FIX: After ensuring legitimate emails are passing SPF/DKIM checks, update your DMARC policy to 'p=quarantine' (sends to spam) or 'p=reject' (blocks delivery) to actively protect your domain."
+        description: "Your DMARC policy is in 'monitoring only' mode. It reports fraudulent emails but does not instruct receivers to block or quarantine them, offering no active protection against spoofing.",
+        remediation: "After ensuring your legitimate emails pass SPF/DKIM, update your DMARC policy to 'p=quarantine' (sends to spam) or 'p=reject' (blocks delivery) to actively protect your domain."
     },
     FindingDetail {
         code: "DNS_SPF_MISSING",
         title: "SPF Record Missing",
-        category: FindingCategory::Dns, // <-- Aggiunto
+        category: FindingCategory::Dns,
         severity: Severity::Warning,
-        description: "WHAT IT IS: Sender Policy Framework (SPF) is a DNS record that lists the mail servers authorized to send email on behalf of your domain. Without it, attackers can more easily send emails that appear to come from you.",
-        remediation: "HOW TO FIX: Create a TXT record for your domain that defines your authorized mail servers. A simple example for Google Workspace is 'v=spf1 include:_spf.google.com ~all'."
+        description: "Sender Policy Framework (SPF) is a DNS record that lists all the servers authorized to send email on behalf of your domain. Without it, attackers can more easily spoof emails from your domain.",
+        remediation: "Create a TXT record for your domain that defines your authorized mail servers. A simple example for Google Workspace is 'v=spf1 include:_spf.google.com ~all'."
     },
-    // --- SSL/TLS ---
+    FindingDetail {
+        code: "DNS_SPF_POLICY_SOFTFAIL",
+        title: "SPF Policy is 'Softfail'",
+        category: FindingCategory::Dns,
+        severity: Severity::Info,
+        description: "Your SPF record uses '~all' (softfail), which suggests that receiving servers should accept but mark suspicious mail. This is less secure than '-all' (fail), which instructs servers to reject the mail.",
+        remediation: "If you are confident your SPF record lists all legitimate mail sources, consider changing the ending from '~all' to '-all' for stricter enforcement."
+    },
+    FindingDetail {
+        code: "DNS_SPF_POLICY_NEUTRAL",
+        title: "SPF Policy is 'Neutral'",
+        category: FindingCategory::Dns,
+        severity: Severity::Info,
+        description: "Your SPF record uses '?all' (neutral), which provides no definitive policy on the mail's legitimacy. It essentially tells receivers 'I don't know if this is valid,' offering no protection.",
+        remediation: "This policy should be avoided. Change '?all' to '~all' (softfail) or, preferably, '-all' (fail) to provide a clear security policy to receiving mail servers."
+    },
+    FindingDetail {
+        code: "DNS_DKIM_MISSING",
+        title: "DKIM Record Missing",
+        category: FindingCategory::Dns,
+        severity: Severity::Info,
+        description: "DKIM (DomainKeys Identified Mail) adds a tamper-proof digital signature to emails. This signature confirms that the email was sent from your domain and that its content has not been altered in transit.",
+        remediation: "Enable DKIM signing in your email service provider's control panel. This typically involves generating a key and adding the public part as a TXT record to your DNS."
+    },
+    FindingDetail {
+        code: "DNS_CAA_MISSING",
+        title: "CAA Record Missing",
+        category: FindingCategory::Dns,
+        severity: Severity::Info,
+        description: "A Certificate Authority Authorization (CAA) record specifies which Certificate Authorities (CAs) are allowed to issue SSL/TLS certificates for your domain. This acts as a safeguard against certificate mis-issuance.",
+        remediation: "Add a CAA record to your DNS to lock down certificate issuance to your chosen provider(s). For example: '0 issue \"letsencrypt.org\"'."
+    },
+
+    // --- SSL/TLS: Secure Communication Layer ---
      FindingDetail {
         code: "SSL_HANDSHAKE_FAILED",
         title: "TLS Handshake Failed",
-        category: FindingCategory::Ssl, // <-- Aggiunto
+        category: FindingCategory::Ssl,
         severity: Severity::Critical,
-        description: "WHAT IT IS: The client could not establish a secure TLS connection. This can be due to an invalid or missing certificate, unsupported cipher suites, or other server misconfigurations.",
-        remediation: "HOW TO FIX: Ensure a valid, trusted SSL/TLS certificate is installed on the server for the correct domain. Check your server's TLS configuration for compatibility with modern clients."
+        description: "The scanner could not establish a secure TLS connection with the server. This can be caused by an invalid/missing certificate, unsupported cipher suites, or other critical server misconfigurations.",
+        remediation: "Ensure a valid, trusted SSL/TLS certificate is installed on the server for the correct domain. Use an online tool like SSL Labs to diagnose TLS configuration issues."
     },
     FindingDetail {
         code: "SSL_EXPIRED",
         title: "SSL Certificate Expired",
-        category: FindingCategory::Ssl, // <-- Aggiunto
+        category: FindingCategory::Ssl,
         severity: Severity::Critical,
-        description: "WHAT IT IS: The website's SSL certificate is either expired or not yet valid. This will cause browsers to show prominent security warnings, eroding user trust.",
-        remediation: "HOW TO FIX: Renew the SSL certificate immediately. Set up automated renewal processes with services like Let's Encrypt to prevent this from happening in the future."
+        description: "The website's SSL certificate is expired. This will cause browsers to show prominent security warnings, block access, and destroy user trust.",
+        remediation: "Renew the SSL certificate immediately. Implement automated renewal processes (e.g., via Let's Encrypt / Certbot) to prevent this from happening in the future."
     },
     FindingDetail {
         code: "SSL_EXPIRING_SOON",
         title: "SSL Certificate Expiring Soon",
-        category: FindingCategory::Ssl, // <-- Aggiunto
+        category: FindingCategory::Ssl,
         severity: Severity::Warning,
-        description: "WHAT IT IS: The SSL certificate will expire in less than 30 days. This is an early warning to prevent service disruption.",
-        remediation: "HOW TO FIX: Renew the SSL certificate before it expires. Verify that your automated renewal systems are functioning correctly."
+        description: "The SSL certificate will expire in less than 30 days. This is an early warning to prevent service disruption and loss of trust.",
+        remediation: "Renew the SSL certificate before it expires. If you have automated renewals, verify that the system is functioning correctly."
     },
-    // --- HTTP Headers ---
+
+    // --- HTTP Headers: Hardening the Application Layer ---
     FindingDetail {
         code: "HEADERS_REQUEST_FAILED",
         title: "HTTP Request Failed",
-        category: FindingCategory::Http, // <-- Aggiunto
+        category: FindingCategory::Http,
         severity: Severity::Critical,
-        description: "WHAT IT IS: The application could not connect to the target server to check its HTTP headers. The server might be down, unreachable, or blocking requests.",
-        remediation: "HOW TO FIX: Verify the target is online and accessible. Check for firewalls or network issues that might be blocking the connection."
+        description: "The scanner could not connect to the target server to check its HTTP headers. The server might be down, unreachable, or blocking automated requests.",
+        remediation: "Verify that the target is online and accessible from the public internet. Check for firewalls or network issues that might be blocking the connection."
     },
     FindingDetail {
         code: "HEADERS_HSTS_MISSING",
         title: "HSTS Header Missing",
-        category: FindingCategory::Http, // <-- Aggiunto
+        category: FindingCategory::Http,
         severity: Severity::Warning,
-        description: "WHAT IT IS: The HTTP Strict-Transport-Security (HSTS) header forces browsers to use HTTPS, protecting against protocol downgrade attacks and cookie hijacking.",
-        remediation: "HOW TO FIX: Add the 'Strict-Transport-Security' header to your web server responses. A common value is 'max-age=31536000; includeSubDomains'."
+        description: "The HTTP Strict-Transport-Security (HSTS) header instructs browsers to only communicate with your site over HTTPS. It protects against protocol downgrade attacks and cookie hijacking.",
+        remediation: "Add the 'Strict-Transport-Security' header to your web server responses. A strong value is 'max-age=31536000; includeSubDomains; preload'."
     },
-    // ... continua ad aggiungere `category: FindingCategory::Http` a tutti gli altri finding sugli header
     FindingDetail {
         code: "HEADERS_CSP_MISSING",
         title: "CSP Header Missing",
-        category: FindingCategory::Http, // <-- Aggiunto
+        category: FindingCategory::Http,
         severity: Severity::Warning,
-        description: "WHAT IT IS: Content-Security-Policy (CSP) is a security layer that helps to detect and mitigate certain types of attacks, including Cross-Site Scripting (XSS) and data injection.",
-        remediation: "HOW TO FIX: Implement a Content-Security-Policy header that defines which resources are allowed to be loaded, reducing the risk of malicious script execution."
+        description: "Content-Security-Policy (CSP) is a powerful security layer that helps prevent attacks like Cross-Site Scripting (XSS) and data injection by defining which resources a browser is allowed to load.",
+        remediation: "Implement a Content-Security-Policy header that defines trusted sources for scripts, styles, and other assets. Start with a restrictive policy and gradually open it up as needed."
     },
     FindingDetail {
         code: "HEADERS_X_FRAME_OPTIONS_MISSING",
         title: "X-Frame-Options Missing",
-        category: FindingCategory::Http, // <-- Aggiunto
+        category: FindingCategory::Http,
         severity: Severity::Warning,
-        description: "WHAT IT IS: This header protects your visitors against 'clickjacking' attacks, where an attacker uses an iframe to trick users into clicking on something malicious.",
-        remediation: "HOW TO FIX: Add the 'X-Frame-Options' header and set it to 'DENY' or 'SAMEORIGIN' to prevent your site from being embedded in other pages."
+        description: "This header protects your visitors against 'clickjacking' attacks, where an attacker loads your site in an invisible iframe to trick users into clicking on malicious content.",
+        remediation: "Add the 'X-Frame-Options' header and set it to 'DENY' (no framing allowed) or 'SAMEORIGIN' (only you can frame your site)."
     },
     FindingDetail {
         code: "HEADERS_X_CONTENT_TYPE_OPTIONS_MISSING",
         title: "X-Content-Type-Options Missing",
-        category: FindingCategory::Http, // <-- Aggiunto
+        category: FindingCategory::Http,
         severity: Severity::Info,
-        description: "WHAT IT IS: This header prevents the browser from interpreting files as a different MIME type than what is specified, which can help mitigate some types of attacks.",
-        remediation: "HOW TO FIX: Add the 'X-Content-Type-Options' header and set its value to 'nosniff'."
+        description: "This header prevents browsers from trying to guess the content type of a file (MIME sniffing). This mitigates attacks where a file disguised as an image could be executed as a script.",
+        remediation: "Add the 'X-Content-Type-Options' header and set its value to 'nosniff'. It's a simple and effective security enhancement."
     },
 ];
 
-/// Retrieves the full detail for a given finding code.
+/// Retrieves the full detail for a given finding code from the static knowledge base.
 pub fn get_finding_detail(code: &str) -> Option<&'static FindingDetail> {
     FINDINGS.iter().find(|f| f.code == code)
 }
