@@ -110,20 +110,6 @@ You need to have the Rust toolchain installed. You can get it from [rustup.rs](h
     -   `n`: Start a new scan.
     -   `e`: Export the current report to a JSON file.
 
-## Roadmap
-
-This project is actively under development. Here's what's planned:
-
--   [x] **Export Functionality**: Export the full scan report to JSON.
--   [ ] **CLI Mode**: A non-interactive command-line interface for scripting and CI/CD integration (`vanguard-rs scan <target> --output report.json`).
--   [ ] **Enhanced Fingerprinting**: Add version detection for identified technologies.
--   [ ] **Offline CVE Scanning**: Cross-reference identified versions with a local vulnerability database.
--   [ ] **More Scanner Modules**:
-    -   Port scanning basics.
-    -   DNSSEC validation.
-    -   Cookie analysis (security flags, tracking, etc.).
--   [ ] **Local AI Integration**: Offline analysis and reporting enhancements using models like `Mistral.rs`.
-
 ## Contributing
 
 Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/your-username/vanguard-rs/issues).
