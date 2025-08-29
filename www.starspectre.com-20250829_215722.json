@@ -1,0 +1,91 @@
+{
+  "dns_results": {
+    "spf": {
+      "Ok": {
+        "record": "v=spf1 include:spf.tutanota.de -all"
+      }
+    },
+    "dmarc": {
+      "Ok": {
+        "record": "v=DMARC1; p=quarantine; adkim=s; rua=mailto:050a64ffd2554555a71f10bdce37bb89@dmarc-reports.cloudflare.net;",
+        "policy": "quarantine"
+      }
+    },
+    "dkim": {
+      "Ok": null
+    },
+    "caa": {
+      "Err": "DNS Error: no record found for Query { name: Name(\"starspectre.com.\"), query_type: CAA, query_class: IN }"
+    },
+    "analysis": [
+      {
+        "severity": "Info",
+        "code": "DNS_DKIM_MISSING"
+      }
+    ]
+  },
+  "ssl_results": {
+    "scan": {
+      "Ok": {
+        "is_valid": true,
+        "certificate_info": {
+          "subject_name": "CN=starspectre.com",
+          "issuer_name": "C=US, O=Google Trust Services, CN=WE1",
+          "not_before": "2025-07-28T11:09:52Z",
+          "not_after": "2025-10-26T12:09:46Z",
+          "days_until_expiry": 57
+        }
+      }
+    },
+    "analysis": []
+  },
+  "headers_results": {
+    "hsts": {
+      "Ok": null
+    },
+    "csp": {
+      "Ok": null
+    },
+    "x_frame_options": {
+      "Ok": null
+    },
+    "x_content_type_options": {
+      "Ok": null
+    },
+    "error": null,
+    "analysis": [
+      {
+        "severity": "Warning",
+        "code": "HEADERS_HSTS_MISSING"
+      },
+      {
+        "severity": "Warning",
+        "code": "HEADERS_CSP_MISSING"
+      },
+      {
+        "severity": "Warning",
+        "code": "HEADERS_X_FRAME_OPTIONS_MISSING"
+      },
+      {
+        "severity": "Info",
+        "code": "HEADERS_X_CONTENT_TYPE_OPTIONS_MISSING"
+      }
+    ]
+  },
+  "fingerprint_results": {
+    "technologies": {
+      "Ok": [
+        {
+          "name": "Cloudflare",
+          "category": "CDN / WAF",
+          "version": null
+        },
+        {
+          "name": "Svelte",
+          "category": "JS Framework",
+          "version": null
+        }
+      ]
+    }
+  }
+}

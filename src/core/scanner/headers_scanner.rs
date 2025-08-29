@@ -1,55 +1,58 @@
 // src/core/scanner/headers_scanner.rs
 
-use crate::core::models::{AnalysisResult, HeaderInfo, HeadersResults, Severity};
+use crate::core::models::{AnalysisFinding, HeaderData, HeadersResults, Severity, ScanResult};
 use reqwest::header::HeaderMap;
 
-/// Helper function to check for the presence of a specific header.
+/// Checks for the presence of a specific header in an HTTP response.
 ///
-/// This function simplifies the logic of checking if a header exists and
-/// extracting its value.
+/// This function attempts to retrieve a header by name and handles the
+/// conversion of its value to a `String`, providing a consistent result.
 ///
 /// # Arguments
 /// * `headers` - A reference to the `HeaderMap` from the HTTP response.
-/// * `name` - The name of the header to check (e.g., "strict-transport-security").
+/// * `name` - The name of the header to check.
 ///
 /// # Returns
-/// An `Option<HeaderInfo>` containing the result of the check.
-fn check_header(headers: &HeaderMap, name: &str) -> Option<HeaderInfo> {
+/// A `ScanResult<HeaderData>` which is an `Ok(Option<HeaderData>)`.
+/// `Ok(Some(HeaderData))` indicates the header was found.
+/// `Ok(None)` indicates the header was not found.
+/// The `Err` variant is reserved for scanner-level errors.
+fn check_header(headers: &HeaderMap, name: &str) -> ScanResult<HeaderData> {
     if let Some(value) = headers.get(name) {
-        Some(HeaderInfo {
-            found: true,
-            // Attempt to convert the header value to a string.
-            value: value.to_str().ok().map(String::from),
-        })
+        // Attempt to convert the header value to a UTF-8 string.
+        match value.to_str() {
+            Ok(s) => Ok(Some(HeaderData { value: s.to_string() })),
+            // Handle non-UTF-8 header values gracefully.
+            Err(_) => Ok(Some(HeaderData { value: "[Invalid UTF-8]".to_string() })),
+        }
     } else {
-        Some(HeaderInfo { found: false, value: None })
+        // If the header is not present, return None.
+        Ok(None)
     }
 }
 
-/// The main function that orchestrates the security headers scan.
+/// Orchestrates the security headers scan for a given target.
 ///
-/// It performs a single asynchronous HTTP GET request to the target URL,
+/// This function performs an asynchronous HTTP GET request to the target URL,
 /// inspects the response headers, and then analyzes them for common security
-/// header misconfigurations or absences.
+/// misconfigurations or absences.
 ///
 /// # Arguments
 /// * `target` - The domain to scan (e.g., "example.com").
 ///
 /// # Returns
-/// A `HeadersResults` struct containing the raw header info and analysis findings.
+/// A `HeadersResults` struct containing the raw header information and analysis findings.
 pub async fn run_headers_scan(target: &str) -> HeadersResults {
-    // reqwest is fully async, so no need for spawn_blocking here.
+    // Build the reqwest client with a custom user agent.
     let client = match reqwest::Client::builder()
         .user_agent("VanguardRS/0.1")
         .build()
     {
         Ok(c) => c,
+        // If client build fails, return an error result immediately.
         Err(e) => {
-            // Handle client build failure immediately and return an error result.
-            let mut results = HeadersResults {
-                error: Some(format!("Failed to build HTTP client: {}", e)),
-                ..Default::default()
-            };
+            let mut results = HeadersResults::default();
+            results.error = Some(format!("Failed to build HTTP client: {}", e));
             results.analysis = analyze_headers_results(&results);
             return results;
         }
@@ -75,73 +78,49 @@ pub async fn run_headers_scan(target: &str) -> HeadersResults {
         }
         Err(e) => {
             // Handle HTTP request failure and return an error result.
-            let mut results = HeadersResults {
-                error: Some(format!("HTTP request failed: {}", e)),
-                ..Default::default()
-            };
+            let mut results = HeadersResults::default();
+            results.error = Some(format!("HTTP request failed: {}", e));
             results.analysis = analyze_headers_results(&results);
             results
         }
     }
 }
 
-/// Analyzes the raw header scan results and produces a list of recommendations.
+/// Analyzes the raw header scan results to produce a list of security findings.
 ///
 /// This function checks for the absence of key security headers and translates
-/// those findings into actionable `AnalysisResult` structs.
+/// those findings into actionable `AnalysisFinding` structs.
 ///
 /// # Arguments
 /// * `results` - A reference to the `HeadersResults` from the scan.
 ///
 /// # Returns
-/// A `Vec<AnalysisResult>` containing all identified security findings.
-fn analyze_headers_results(results: &HeadersResults) -> Vec<AnalysisResult> {
+/// A `Vec<AnalysisFinding>` containing all identified security findings.
+fn analyze_headers_results(results: &HeadersResults) -> Vec<AnalysisFinding> {
     let mut analyses = Vec::new();
 
     // If there was a request error, report it as a critical finding and exit early.
     if results.error.is_some() {
-        analyses.push(AnalysisResult {
-            severity: Severity::Critical,
-            code: "HEADERS_REQUEST_FAILED".to_string(),
-        });
+        analyses.push(AnalysisFinding::new(Severity::Critical, "HEADERS_REQUEST_FAILED"));
         return analyses;
     }
 
     // Check for the absence of each security header and add a finding if missing.
-    if let Some(hsts) = &results.hsts {
-        if !hsts.found {
-            analyses.push(AnalysisResult {
-                severity: Severity::Warning,
-                code: "HEADERS_HSTS_MISSING".to_string(),
-            });
-        }
+    // The pattern `Ok(None)` elegantly handles both the `Ok` and `None` cases.
+    if let Ok(None) = &results.hsts {
+        analyses.push(AnalysisFinding::new(Severity::Warning, "HEADERS_HSTS_MISSING"));
     }
 
-    if let Some(csp) = &results.csp {
-        if !csp.found {
-            analyses.push(AnalysisResult {
-                severity: Severity::Warning,
-                code: "HEADERS_CSP_MISSING".to_string(),
-            });
-        }
+    if let Ok(None) = &results.csp {
+        analyses.push(AnalysisFinding::new(Severity::Warning, "HEADERS_CSP_MISSING"));
     }
 
-    if let Some(xfo) = &results.x_frame_options {
-        if !xfo.found {
-            analyses.push(AnalysisResult {
-                severity: Severity::Warning,
-                code: "HEADERS_X_FRAME_OPTIONS_MISSING".to_string(),
-            });
-        }
+    if let Ok(None) = &results.x_frame_options {
+        analyses.push(AnalysisFinding::new(Severity::Warning, "HEADERS_X_FRAME_OPTIONS_MISSING"));
     }
 
-    if let Some(xcto) = &results.x_content_type_options {
-        if !xcto.found {
-            analyses.push(AnalysisResult {
-                severity: Severity::Info,
-                code: "HEADERS_X_CONTENT_TYPE_OPTIONS_MISSING".to_string(),
-            });
-        }
+    if let Ok(None) = &results.x_content_type_options {
+        analyses.push(AnalysisFinding::new(Severity::Info, "HEADERS_X_CONTENT_TYPE_OPTIONS_MISSING"));
     }
 
     analyses
