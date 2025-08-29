@@ -8,7 +8,9 @@ chrono = {version = "0.4.41", features = ["serde"]}
 crossterm = "0.29.0"
 hickory-resolver = { version = "0.24.1", features = ["tokio", "tokio-native-tls"] }
 native-tls = "0.2.14"
+once_cell = "1.21.3"
 ratatui = {version = "0.29.0", features = ["all-widgets"]}
+regex = "1.11.2"
 reqwest = {version = "0.12.23", features = ["rustls-tls"]}
 rust-i18n = "3.1.5"
 scraper = "0.24.0"
