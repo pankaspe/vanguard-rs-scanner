@@ -6,23 +6,40 @@ use std::collections::HashMap;
 use regex::Regex;
 use once_cell::sync::Lazy;
 
-// Added a new check type for <link href="..."> tags, crucial for CSS frameworks.
+/// An enum representing the different types of checks to perform for fingerprinting.
+///
+/// This provides a flexible and extensible way to define a rule, allowing it to
+/// target HTTP headers, meta tags, body content, or specific HTML element attributes.
 enum Check<'a> {
+    /// Checks for a specific HTTP header and uses a regex to find a match and capture a version.
     Header(&'a str, &'a Lazy<Regex>),
+    /// Parses the HTML document to find a `<meta>` tag with a given name and checks its content.
     MetaTag(&'a str, &'a Lazy<Regex>),
+    /// Checks the entire HTML body for a regex pattern.
     Body(&'a Lazy<Regex>),
+    /// Iterates through all `<script>` tags and checks their `src` attribute.
     ScriptSrc(&'a Lazy<Regex>),
-    LinkHref(&'a Lazy<Regex>), // To check CSS frameworks like Bootstrap
+    /// Iterates through all `<link>` tags and checks their `href` attribute.
+    LinkHref(&'a Lazy<Regex>),
+    /// Checks the `Set-Cookie` header for a specific regex pattern.
     Cookie(&'a Lazy<Regex>),
 }
 
+/// A struct that defines a single fingerprinting rule.
+///
+/// Each rule links a technology name and category to a specific `Check` type.
 struct FingerprintRule<'a> {
+    /// The name of the technology (e.g., "Nginx").
     tech_name: &'a str,
+    /// The category of the technology (e.g., "Web Server").
     category: &'a str,
+    /// The specific check to perform to identify this technology.
     check: Check<'a>,
 }
 
 // --- Massively Expanded "Intelligence" Database ---
+// This section uses `once_cell::sync::Lazy` to ensure that Regex objects are
+// compiled only once, on first use, which is a performance best practice.
 
 // Web Servers & CDNs
 static RE_NGINX: Lazy<Regex> = Lazy::new(|| Regex::new(r"nginx/([\d\.]+)").unwrap());
@@ -66,7 +83,9 @@ static RE_VUE: Lazy<Regex> = Lazy::new(|| Regex::new(r"data-v-app|__VUE_").unwra
 static RE_BOOTSTRAP: Lazy<Regex> = Lazy::new(|| Regex::new(r"bootstrap.min.css").unwrap());
 static RE_GOOGLE_ANALYTICS: Lazy<Regex> = Lazy::new(|| Regex::new(r"google-analytics.com/|googletagmanager.com/").unwrap());
 
-
+/// The master list of all fingerprinting rules.
+///
+/// This static array serves as the "knowledge base" for the fingerprinting scan.
 static RULES: &[FingerprintRule] = &[
     // Web Servers & CDNs (with resilient fallbacks)
     FingerprintRule { tech_name: "Nginx", category: "Web Server", check: Check::Header("server", &RE_NGINX) },
@@ -112,6 +131,16 @@ static RULES: &[FingerprintRule] = &[
 ];
 
 
+/// Executes a technology fingerprinting scan on a given target URL.
+///
+/// This function makes an HTTP request, retrieves the response headers and body,
+/// and then applies a set of predefined rules to identify technologies.
+///
+/// # Arguments
+/// * `target` - The domain to scan (e.g., "example.com").
+///
+/// # Returns
+/// A `FingerprintResults` struct containing a list of found technologies.
 pub async fn run_fingerprint_scan(target: &str) -> FingerprintResults {
     let client = match reqwest::Client::builder().user_agent("VanguardRS/0.1").build() {
         Ok(c) => c,
@@ -133,23 +162,28 @@ pub async fn run_fingerprint_scan(target: &str) -> FingerprintResults {
     };
     let document = Html::parse_document(&body);
 
+    // Iterate through all rules and apply the appropriate check.
     for rule in RULES {
         let version = match &rule.check {
             Check::Header(name, re) => check_with_regex(headers.get(*name).and_then(|v| v.to_str().ok()), re),
             Check::MetaTag(name, re) => check_meta_tag(&document, name, re),
             Check::Body(re) => check_with_regex(Some(&body), re),
             Check::ScriptSrc(re) => check_script_src(&document, re),
-            Check::LinkHref(re) => check_link_href(&document, re), // Logic for the new check
+            Check::LinkHref(re) => check_link_href(&document, re),
             Check::Cookie(re) => check_with_regex(Some(&cookies), re),
         };
         
+        // If a technology is found, add it to the results, preferring a version if one is found.
         if let Some(v) = version {
             let tech_name_str = rule.tech_name.to_string();
+            // Check if we already found this technology via another rule.
             if let Some(existing_tech) = found_techs.get_mut(&tech_name_str) {
+                // If the existing entry doesn't have a version but the new one does, update it.
                 if existing_tech.version.is_none() && v.is_some() {
                     existing_tech.version = v;
                 }
             } else {
+                // If it's a new technology, insert it.
                 found_techs.insert(tech_name_str, Technology {
                     name: rule.tech_name.to_string(),
                     category: rule.category.to_string(),
@@ -159,12 +193,17 @@ pub async fn run_fingerprint_scan(target: &str) -> FingerprintResults {
         }
     }
 
+    // Convert the HashMap into a Vec<Technology> for the final report.
     FingerprintResults {
         error: None,
         technologies: found_techs.into_values().collect(),
     }
 }
 
+/// A generic helper function to apply a regex to a string and capture a version.
+///
+/// Returns `Some(Some(version))` if a version is captured, `Some(None)` if a match is found
+/// but no version is captured, and `None` if no match is found at all.
 fn check_with_regex(text_option: Option<&str>, re: &Regex) -> Option<Option<String>> {
     text_option.and_then(|text| {
         re.captures(text).map(|caps| {
@@ -175,6 +214,7 @@ fn check_with_regex(text_option: Option<&str>, re: &Regex) -> Option<Option<Stri
     })
 }
 
+/// Helper function to check a `<meta>` tag for a matching pattern.
 fn check_meta_tag(doc: &Html, name: &str, re: &Regex) -> Option<Option<String>> {
     let selector_str = format!("meta[name='{}']", name);
     if let Ok(selector) = Selector::parse(&selector_str) {
@@ -184,6 +224,7 @@ fn check_meta_tag(doc: &Html, name: &str, re: &Regex) -> Option<Option<String>> 
     None
 }
 
+/// Helper function to check the `src` attribute of `<script>` tags.
 fn check_script_src(doc: &Html, re: &Regex) -> Option<Option<String>> {
     if let Ok(selector) = Selector::parse("script[src]") {
         for el in doc.select(&selector) {
@@ -197,7 +238,7 @@ fn check_script_src(doc: &Html, re: &Regex) -> Option<Option<String>> {
     None
 }
 
-// Helper function for our new LinkHref check
+/// Helper function to check the `href` attribute of `<link>` tags.
 fn check_link_href(doc: &Html, re: &Regex) -> Option<Option<String>> {
     if let Ok(selector) = Selector::parse("link[href]") {
         for el in doc.select(&selector) {

@@ -8,19 +8,35 @@ use hickory_resolver::proto::rr::RecordType;
 use hickory_resolver::TokioAsyncResolver;
 
 // A list of common selectors to check for DKIM records.
+/// These are widely-used selectors by major email service providers.
 const COMMON_DKIM_SELECTORS: &[&str] = &["google", "selector1", "selector2", "default", "dkim"];
 
 /// Executes the complete and enhanced DNS scan.
+///
+/// This is the primary entry point for the DNS scanning module. It performs
+/// asynchronous lookups for SPF, DMARC, DKIM, and CAA records, aggregates the
+/// results, and then runs a detailed analysis to generate actionable findings.
+///
+/// # Arguments
+/// * `target` - The domain to scan (e.g., "example.com" or "www.example.com").
+///
+/// # Returns
+/// A `DnsResults` struct containing all raw lookup data and analysis findings.
 pub async fn run_dns_scan(target: &str) -> DnsResults {
+    // Strip "www." to ensure the scan is performed on the root domain, as
+    // email-related records are typically configured there.
     let root_target = if let Some(stripped) = target.strip_prefix("www.") {
         stripped
     } else {
         target
     };
 
+    // Initialize the asynchronous DNS resolver with default configurations.
     let resolver =
         TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
+    // Use `tokio::join!` to concurrently perform all DNS lookups,
+    // which significantly improves performance.
     let (spf_result, dmarc_result, dkim_result, caa_result) = tokio::join!(
         lookup_spf(&resolver, root_target),
         lookup_dmarc(&resolver, root_target),
@@ -28,6 +44,7 @@ pub async fn run_dns_scan(target: &str) -> DnsResults {
         lookup_caa(&resolver, root_target)
     );
 
+    // Aggregate the results into a single DnsResults struct.
     let mut results = DnsResults {
         spf: Some(spf_result),
         dmarc: Some(dmarc_result),
@@ -36,11 +53,22 @@ pub async fn run_dns_scan(target: &str) -> DnsResults {
         analysis: Vec::new(),
     };
 
+    // Analyze the raw results to generate the final list of security findings.
     results.analysis = analyze_dns_results(&results);
     results
 }
 
 /// Analyzes the raw DNS scan results to generate actionable findings.
+///
+/// This function inspects the presence and content of each DNS record
+/// and maps common misconfigurations or missing records to specific
+/// `AnalysisResult` codes.
+///
+/// # Arguments
+/// * `results` - A reference to the raw `DnsResults` from the scan.
+///
+/// # Returns
+/// A `Vec<AnalysisResult>` containing all identified security findings.
 fn analyze_dns_results(results: &DnsResults) -> Vec<AnalysisResult> {
     let mut analyses = Vec::new();
 
@@ -81,7 +109,14 @@ fn analyze_dns_results(results: &DnsResults) -> Vec<AnalysisResult> {
     analyses
 }
 
-/// Looks up the SPF TXT record.
+/// Asynchronously looks up the SPF TXT record for the target domain.
+///
+/// # Arguments
+/// * `resolver` - A reference to the DNS resolver.
+/// * `target` - The domain to query.
+///
+/// # Returns
+/// A `SpfRecord` struct with the lookup result.
 async fn lookup_spf(resolver: &TokioAsyncResolver, target: &str) -> SpfRecord {
     match resolver.txt_lookup(target).await {
         Ok(txt_records) => {
@@ -97,7 +132,17 @@ async fn lookup_spf(resolver: &TokioAsyncResolver, target: &str) -> SpfRecord {
     }
 }
 
-/// Looks up the DMARC TXT record.
+/// Asynchronously looks up the DMARC TXT record.
+///
+/// DMARC records are always located at `_dmarc.target`. This function
+/// constructs the correct subdomain and performs the lookup.
+///
+/// # Arguments
+/// * `resolver` - A reference to the DNS resolver.
+/// * `target` - The domain to query.
+///
+/// # Returns
+/// A `DmarcRecord` struct with the lookup result.
 async fn lookup_dmarc(resolver: &TokioAsyncResolver, target: &str) -> DmarcRecord {
     let dmarc_target = format!("_dmarc.{}", target);
     match resolver.txt_lookup(dmarc_target).await {
@@ -116,7 +161,17 @@ async fn lookup_dmarc(resolver: &TokioAsyncResolver, target: &str) -> DmarcRecor
     }
 }
 
-/// Looks up DKIM records for a list of common selectors.
+/// Asynchronously looks up DKIM records for a list of common selectors.
+///
+/// The function iterates through `COMMON_DKIM_SELECTORS` and performs a lookup
+/// for each one, aggregating any valid records found.
+///
+/// # Arguments
+/// * `resolver` - A reference to the DNS resolver.
+/// * `target` - The domain to query.
+///
+/// # Returns
+/// A `DkimResults` struct with the lookup result.
 async fn lookup_dkim(resolver: &TokioAsyncResolver, target: &str) -> DkimResults {
     let mut found_records = Vec::new();
     for selector in COMMON_DKIM_SELECTORS {
@@ -141,7 +196,14 @@ async fn lookup_dkim(resolver: &TokioAsyncResolver, target: &str) -> DkimResults
     }
 }
 
-/// --- FINAL FIX: Looks up CAA records using .to_string() directly on the Record ---
+/// Asynchronously looks up CAA records for the target domain.
+///
+/// # Arguments
+/// * `resolver` - A reference to the DNS resolver.
+/// * `target` - The domain to query.
+///
+/// # Returns
+/// A `CaaResults` struct with the lookup result.
 async fn lookup_caa(resolver: &TokioAsyncResolver, target: &str) -> CaaResults {
     match resolver.lookup(target, RecordType::CAA).await {
         Ok(caa_lookup) => {
@@ -160,6 +222,7 @@ async fn lookup_caa(resolver: &TokioAsyncResolver, target: &str) -> CaaResults {
 }
 
 // Helper implementation for creating AnalysisResult easily.
+/// A simple constructor for `AnalysisResult` to reduce boilerplate.
 impl AnalysisResult {
     fn new(severity: Severity, code: &str) -> Self {
         Self { severity, code: code.to_string() }
