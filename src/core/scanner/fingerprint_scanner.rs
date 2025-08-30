@@ -1,28 +1,40 @@
 // src/core/scanner/fingerprint_scanner.rs
 
-// NUOVO: Importiamo i macro di logging.
 use tracing::{debug, error, info};
-
 use crate::core::models::{FingerprintResults, Technology};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use regex::Regex;
 use once_cell::sync::Lazy;
 
-// --- Questa sezione (enum, struct, static RULES) rimane invariata ---
+/// Defines the different types of checks that can be performed to identify a technology.
 enum Check<'a> {
+    /// Check for a pattern in a specific HTTP header.
     Header(&'a str, &'a Lazy<Regex>),
+    /// Check for a pattern in the content of a specific meta tag.
     MetaTag(&'a str, &'a Lazy<Regex>),
+    /// Check for a pattern in the HTML body.
     Body(&'a Lazy<Regex>),
+    /// Check for a pattern in the `src` attribute of `<script>` tags.
     ScriptSrc(&'a Lazy<Regex>),
+    /// Check for a pattern in the `href` attribute of `<link>` tags.
     LinkHref(&'a Lazy<Regex>),
+    /// Check for a pattern in the `set-cookie` headers.
     Cookie(&'a Lazy<Regex>),
 }
+
+/// A rule that defines how to detect a specific technology.
 struct FingerprintRule<'a> {
+    /// The name of the technology (e.g., "Nginx").
     tech_name: &'a str,
+    /// The category of the technology (e.g., "Web Server").
     category: &'a str,
+    /// The specific check to perform.
     check: Check<'a>,
 }
+
+// Statically compiled regexes for performance. Each regex is designed to detect
+// a specific technology signature or extract its version.
 static RE_NGINX: Lazy<Regex> = Lazy::new(|| Regex::new(r"nginx/([\d\.]+)").unwrap());
 static RE_NGINX_ERROR: Lazy<Regex> = Lazy::new(|| Regex::new(r"<hr><center>nginx</center>").unwrap());
 static RE_APACHE: Lazy<Regex> = Lazy::new(|| Regex::new(r"Apache/([\d\.]+)").unwrap());
@@ -56,6 +68,7 @@ static RE_VUE: Lazy<Regex> = Lazy::new(|| Regex::new(r"data-v-app|__VUE_").unwra
 static RE_BOOTSTRAP: Lazy<Regex> = Lazy::new(|| Regex::new(r"bootstrap.min.css").unwrap());
 static RE_GOOGLE_ANALYTICS: Lazy<Regex> = Lazy::new(|| Regex::new(r"google-analytics.com/|googletagmanager.com/").unwrap());
 
+/// The master list of all fingerprinting rules.
 static RULES: &[FingerprintRule] = &[
     FingerprintRule { tech_name: "Nginx", category: "Web Server", check: Check::Header("server", &RE_NGINX) },
     FingerprintRule { tech_name: "Nginx", category: "Web Server", check: Check::Body(&RE_NGINX_ERROR) },
@@ -91,13 +104,23 @@ static RULES: &[FingerprintRule] = &[
     FingerprintRule { tech_name: "Google Analytics", category: "Analytics", check: Check::ScriptSrc(&RE_GOOGLE_ANALYTICS) },
 ];
 
+
+/// Runs a technology fingerprinting scan against the target.
+///
+/// It sends an HTTP GET request to the target, then applies a series of rules
+/// to the response headers, cookies, and body to identify the technologies in use.
+///
+/// # Arguments
+/// * `target` - The domain or IP address to scan.
+///
+/// # Returns
+/// A `FingerprintResults` struct containing a list of identified technologies.
 pub async fn run_fingerprint_scan(target: &str) -> FingerprintResults {
     info!(target, "Starting fingerprint scan.");
 
     let client = match reqwest::Client::builder().user_agent("VanguardRS/0.1").build() {
         Ok(c) => c,
         Err(e) => {
-            // NUOVO: Logga l'errore prima di restituire.
             error!(error = %e, "Failed to build HTTP client");
             return FingerprintResults { technologies: Err(format!("HTTP client error: {}", e)) };
         }
@@ -106,7 +129,6 @@ pub async fn run_fingerprint_scan(target: &str) -> FingerprintResults {
     let url = format!("https://{}", target);
     let response = match client.get(&url).send().await {
         Ok(res) => {
-            // NUOVO: Logga lo status della risposta ricevuta.
             info!(status = %res.status(), "Received HTTP response.");
             res
         },
@@ -133,9 +155,9 @@ pub async fn run_fingerprint_scan(target: &str) -> FingerprintResults {
     
     let mut found_techs: HashMap<String, Technology> = HashMap::new();
 
-    // NUOVO: Logghiamo il numero totale di regole che verranno applicate.
     debug!(total_rules = %RULES.len(), "Applying fingerprinting rules.");
     for rule in RULES {
+        // Apply the check defined by the current rule.
         let version = match &rule.check {
             Check::Header(name, re) => check_with_regex(headers.get(*name).and_then(|v| v.to_str().ok()), re),
             Check::MetaTag(name, re) => check_meta_tag(&document, name, re),
@@ -145,17 +167,18 @@ pub async fn run_fingerprint_scan(target: &str) -> FingerprintResults {
             Check::Cookie(re) => check_with_regex(Some(&cookies), re),
         };
         
+        // If the rule matched, process the result.
         if let Some(v) = version {
-            // NUOVO: Logga ogni volta che una regola trova una corrispondenza.
             debug!(tech = %rule.tech_name, version = ?v, "Rule matched.");
             let tech_name_str = rule.tech_name.to_string();
             if let Some(existing_tech) = found_techs.get_mut(&tech_name_str) {
+                // If we already detected this tech but now have a version, update it.
                 if existing_tech.version.is_none() && v.is_some() {
-                    // NUOVO: Logga quando aggiorniamo una tecnologia esistente con una versione.
                     debug!(tech = %existing_tech.name, "Updating technology with found version.");
                     existing_tech.version = v;
                 }
             } else {
+                // Add the newly found technology to our results.
                 found_techs.insert(tech_name_str, Technology {
                     name: rule.tech_name.to_string(),
                     category: rule.category.to_string(),
@@ -165,16 +188,21 @@ pub async fn run_fingerprint_scan(target: &str) -> FingerprintResults {
         }
     }
 
-    // NUOVO: Logga il riepilogo finale della scansione.
     info!(count = %found_techs.len(), "Fingerprint scan finished.");
     FingerprintResults {
         technologies: Ok(found_techs.into_values().collect()),
     }
 }
 
+/// A helper function that applies a regex to an optional string slice.
+///
+/// Returns `Some(version)` if the regex matches. The `version` itself is an `Option<String>`:
+/// `Some(Some(String))` if a version was captured, `Some(None)` if the pattern matched
+/// but no version was captured, and `None` if the pattern did not match at all.
 fn check_with_regex(text_option: Option<&str>, re: &Regex) -> Option<Option<String>> {
     text_option.and_then(|text| {
         re.captures(text).map(|caps| {
+            // Attempt to get the first capture group, which usually contains the version.
             caps.get(1)
                 .map(|m| m.as_str().to_string())
                 .filter(|s| !s.is_empty())
@@ -182,6 +210,7 @@ fn check_with_regex(text_option: Option<&str>, re: &Regex) -> Option<Option<Stri
     })
 }
 
+/// Searches the parsed HTML for a specific meta tag and checks its content with a regex.
 fn check_meta_tag(doc: &Html, name: &str, re: &Regex) -> Option<Option<String>> {
     let selector_str = format!("meta[name='{}']", name);
     if let Ok(selector) = Selector::parse(&selector_str) {
@@ -191,12 +220,13 @@ fn check_meta_tag(doc: &Html, name: &str, re: &Regex) -> Option<Option<String>> 
     None
 }
 
+/// Searches the parsed HTML for script tags and checks their `src` attributes with a regex.
 fn check_script_src(doc: &Html, re: &Regex) -> Option<Option<String>> {
     if let Ok(selector) = Selector::parse("script[src]") {
         for el in doc.select(&selector) {
             if let Some(src) = el.value().attr("src") {
                 if let Some(version) = check_with_regex(Some(src), re) {
-                    return Some(version);
+                    return Some(version); // Return on first match.
                 }
             }
         }
@@ -204,12 +234,13 @@ fn check_script_src(doc: &Html, re: &Regex) -> Option<Option<String>> {
     None
 }
 
+/// Searches the parsed HTML for link tags and checks their `href` attributes with a regex.
 fn check_link_href(doc: &Html, re: &Regex) -> Option<Option<String>> {
     if let Ok(selector) = Selector::parse("link[href]") {
         for el in doc.select(&selector) {
             if let Some(href) = el.value().attr("href") {
                 if let Some(version) = check_with_regex(Some(href), re) {
-                    return Some(version);
+                    return Some(version); // Return on first match.
                 }
             }
         }
