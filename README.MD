@@ -105,10 +105,11 @@ You need to have the Rust toolchain installed. You can get it from [rustup.rs](h
     -   Type the target domain (e.g., `google.com`, `https://github.com/`).
     -   `Enter`: Start the scan.
 -   **Analysis Mode**:
-    -   `←` / `h` & `→` / `l`: Navigate between analysis tabs (`All`, `Critical`, etc.).
-    -   `↑` / `k` & `↓` / `j`: Select an issue within the list.
+    -   `←` & `→`: Navigate on logs.
+    -   `↑` & `↓`: Select an issue within the list.
     -   `n`: Start a new scan.
     -   `e`: Export the current report to a JSON file.
+    -   `l`: Show logs
 
 ## Contributing
 
