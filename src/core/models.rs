@@ -3,66 +3,65 @@
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 
-// --- Tipi di Risultato Riutilizzabili ---
-// Reusable Result Types
 // A custom type alias for a Result that can hold an optional success value or a String error.
+// This is used throughout the scanners to represent operations that might fail or might not
+// find a specific piece of data.
 pub type ScanResult<T> = Result<Option<T>, String>;
 
-// --- Modelli Dati Core ---
-// Core Data Models
-
-// An enumeration representing the severity level of a finding.
-// The `derive` attributes enable automatic implementation of traits for debugging, cloning,
-// serialization/deserialization, and comparison.
+/// Represents the severity level of an analysis finding.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Severity {
+    /// A critical issue that should be addressed immediately.
     Critical,
+    /// A potential issue or a deviation from best practices.
     Warning,
+    /// Informational finding, not necessarily a vulnerability.
     Info,
 }
 
-// A struct representing an analysis finding, containing a severity level and a string code.
+/// Represents a single analysis finding, identified by a unique code.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisFinding {
     pub severity: Severity,
     pub code: String,
 }
 
-// --- FIX: L'implementazione del costruttore va qui, una sola volta ---
-// FIX: The constructor implementation goes here, only once
-// An implementation block for the `AnalysisFinding` struct.
 impl AnalysisFinding {
-    // A constructor function to create a new `AnalysisFinding` instance.
+    /// Constructs a new `AnalysisFinding`.
+    ///
+    /// # Arguments
+    /// * `severity` - The severity level of the finding.
+    /// * `code` - A unique string identifier for the finding.
     pub fn new(severity: Severity, code: &str) -> Self {
         Self { severity, code: code.to_string() }
     }
 }
 
-
-// --- Modelli Scanner DNS ---
+//====================================================================================
 // DNS Scanner Models
+//====================================================================================
 
-// A struct to hold data for an SPF (Sender Policy Framework) record.
+/// Holds data for a Sender Policy Framework (SPF) record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpfData {
     pub record: String,
 }
 
-// A struct to hold data for a DMARC (Domain-based Message Authentication, Reporting, and Conformance) record.
+/// Holds data for a Domain-based Message Authentication, Reporting, and Conformance (DMARC) record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DmarcData {
     pub record: String,
     pub policy: Option<String>,
 }
 
-// A struct to hold data for a DKIM (DomainKeys Identified Mail) record.
+/// Holds data for a DomainKeys Identified Mail (DKIM) record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DkimRecord {
     pub selector: String,
     pub record: String,
 }
 
-// A struct that aggregates the results of a DNS scan, including SPF, DMARC, DKIM, and CAA records.
+/// Aggregates the results of a DNS scan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnsResults {
     pub spf: ScanResult<SpfData>,
@@ -72,8 +71,8 @@ pub struct DnsResults {
     pub analysis: Vec<AnalysisFinding>,
 }
 
-// Implementation of the `Default` trait for `DnsResults` to provide a default, empty state.
 impl Default for DnsResults {
+    /// Provides a default, empty state for `DnsResults`.
     fn default() -> Self {
         Self {
             spf: Ok(None),
@@ -85,10 +84,11 @@ impl Default for DnsResults {
     }
 }
 
-// --- Modelli Scanner SSL/TLS ---
+//====================================================================================
 // SSL/TLS Scanner Models
+//====================================================================================
 
-// A struct containing detailed information extracted from an SSL/TLS certificate.
+/// Contains detailed information extracted from an SSL/TLS certificate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CertificateInfo {
     pub subject_name: String,
@@ -98,22 +98,22 @@ pub struct CertificateInfo {
     pub days_until_expiry: i64,
 }
 
-// A struct to hold the core data for an SSL/TLS scan, including validity and certificate info.
+/// Holds the core data from an SSL/TLS scan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SslData {
     pub is_valid: bool,
     pub certificate_info: CertificateInfo,
 }
 
-// A struct that aggregates the results of an SSL scan, including the raw data and analysis findings.
+/// Aggregates the results of an SSL/TLS scan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SslResults {
     pub scan: ScanResult<SslData>,
     pub analysis: Vec<AnalysisFinding>,
 }
 
-// Implementation of the `Default` trait for `SslResults`.
 impl Default for SslResults {
+    /// Provides a default, empty state for `SslResults`.
     fn default() -> Self {
         Self {
             scan: Ok(None),
@@ -122,16 +122,17 @@ impl Default for SslResults {
     }
 }
 
-// --- Modelli Scanner Header HTTP ---
-// HTTP Header Scanner Models
+//====================================================================================
+// HTTP Headers Scanner Models
+//====================================================================================
 
-// A struct to hold a single header's value.
+/// A generic struct to hold the value of a single HTTP header.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeaderData {
     pub value: String,
 }
 
-// A struct that aggregates the results of an HTTP header scan.
+/// Aggregates the results of an HTTP security headers scan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeadersResults {
     pub hsts: ScanResult<HeaderData>,
@@ -142,8 +143,8 @@ pub struct HeadersResults {
     pub analysis: Vec<AnalysisFinding>,
 }
 
-// Implementation of the `Default` trait for `HeadersResults`.
 impl Default for HeadersResults {
+    /// Provides a default, empty state for `HeadersResults`.
     fn default() -> Self {
         Self {
             hsts: Ok(None),
@@ -156,10 +157,11 @@ impl Default for HeadersResults {
     }
 }
 
-// --- Modelli Scanner Fingerprint ---
+//====================================================================================
 // Fingerprint Scanner Models
+//====================================================================================
 
-// A struct to hold information about a detected technology (e.g., a web framework or CMS).
+/// Holds information about a detected technology (e.g., a web framework, CMS, or library).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Technology {
     pub name: String,
@@ -167,14 +169,14 @@ pub struct Technology {
     pub version: Option<String>,
 }
 
-// A struct that aggregates the results of a technology fingerprint scan.
+/// Aggregates the results of a technology fingerprinting scan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FingerprintResults {
     pub technologies: Result<Vec<Technology>, String>,
 }
 
-// Implementation of the `Default` trait for `FingerprintResults`.
 impl Default for FingerprintResults {
+    /// Provides a default, empty state for `FingerprintResults`.
     fn default() -> Self {
         Self {
             technologies: Ok(Vec::new()),
@@ -182,11 +184,12 @@ impl Default for FingerprintResults {
     }
 }
 
-// --- Report Principale ---
-// Main Report
+//====================================================================================
+// Main Scan Report
+//====================================================================================
 
-// A main report struct that combines the results of all individual scanners into a single, comprehensive report.
-// The `Default` trait is derived for easy initialization with empty data.
+/// The main report struct that combines the results of all individual scanners
+/// into a single, comprehensive report.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ScanReport {
     pub dns_results: DnsResults,
