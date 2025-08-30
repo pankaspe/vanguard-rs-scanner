@@ -1,6 +1,6 @@
 # Vanguard RS - The scanner
 
-![Vanguard RS](screenshot.png)
+![Vanguard RS](screenshot2.png)
 *A hyper-performant, privacy-first security analysis toolkit forged in 100% Rust, presented in a sleek and interactive TUI dashboard.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
