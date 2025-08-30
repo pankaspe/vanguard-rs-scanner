@@ -1,0 +1,88 @@
+{
+  "dns_results": {
+    "spf": {
+      "Ok": {
+        "record": "v=spf1 ip4:86.107.36.148 +mx +a +ip4:185.81.4.67/24 ~all"
+      }
+    },
+    "dmarc": {
+      "Err": "DNS Error: no record found for Query { name: Name(\"_dmarc.macugnaga.net.\"), query_type: TXT, query_class: IN }"
+    },
+    "dkim": {
+      "Ok": [
+        {
+          "selector": "default",
+          "record": "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvku6dFNhT9CkM6ErQDyLXZfx7XqvPu6KWNGJI2toQUh7A7dCi/mA5qOlZb3wgpmDFjPw3yNHZdjLnIusFbvO78Zp+5/gAswNBG/cxW6bForrzpdt4QZASOaqy4Vnu1ynJLOaInJ21H6ZaMSaeIWlpdrpWnMrdM0bdXcoNxK/Xle587T/AOrxduHjKvehgmFH2vql0Q0fT3bYL9eWZf1d9cxPbjMcSoNz+Wv56SLRkr6Ck0NzGXYxaNNQVUdEP0GqJXst82oFKpukDlFAzoMGl9WslO20AV7Dcg0CAMYxBun5cQ49hqZ5nSo6AxSAPq2BwEwqlK+xmljOftZsSLwy9QIDAQAB;"
+        }
+      ]
+    },
+    "caa": {
+      "Err": "DNS Error: no record found for Query { name: Name(\"macugnaga.net.\"), query_type: CAA, query_class: IN }"
+    },
+    "analysis": [
+      {
+        "severity": "Info",
+        "code": "DNS_SPF_POLICY_SOFTFAIL"
+      }
+    ]
+  },
+  "ssl_results": {
+    "scan": {
+      "Ok": {
+        "is_valid": true,
+        "certificate_info": {
+          "subject_name": "CN=macugnaga.net",
+          "issuer_name": "C=US, O=Let's Encrypt, CN=R11",
+          "not_before": "2025-07-28T23:43:21Z",
+          "not_after": "2025-10-26T23:43:20Z",
+          "days_until_expiry": 57
+        }
+      }
+    },
+    "analysis": []
+  },
+  "headers_results": {
+    "hsts": {
+      "Ok": null
+    },
+    "csp": {
+      "Ok": null
+    },
+    "x_frame_options": {
+      "Ok": null
+    },
+    "x_content_type_options": {
+      "Ok": null
+    },
+    "error": null,
+    "analysis": [
+      {
+        "severity": "Warning",
+        "code": "HEADERS_HSTS_MISSING"
+      },
+      {
+        "severity": "Warning",
+        "code": "HEADERS_CSP_MISSING"
+      },
+      {
+        "severity": "Warning",
+        "code": "HEADERS_X_FRAME_OPTIONS_MISSING"
+      },
+      {
+        "severity": "Info",
+        "code": "HEADERS_X_CONTENT_TYPE_OPTIONS_MISSING"
+      }
+    ]
+  },
+  "fingerprint_results": {
+    "technologies": {
+      "Ok": [
+        {
+          "name": "WordPress",
+          "category": "CMS",
+          "version": "6.8.2"
+        }
+      ]
+    }
+  }
+}

@@ -11,3 +11,4 @@ pub mod footer;         // The widget for the dynamic footer bar.
 pub mod input;          // The widget for the user input field.
 pub mod disclaimer_popup; // The widget for the legal disclaimer popup.
 pub mod summary;        // The widget that displays the scan summary.
+pub mod log_view; // The widget for logs

@@ -1,5 +1,8 @@
 // src/core/scanner/ssl_scanner.rs
 
+// NUOVO: Importiamo i macro di logging.
+use tracing::{debug, error, info};
+
 use crate::core::models::{AnalysisFinding, CertificateInfo, Severity, SslData, SslResults, ScanResult};
 use chrono::{DateTime, Utc};
 use native_tls::TlsConnector;
@@ -7,80 +10,92 @@ use std::net::TcpStream;
 use tokio::task::spawn_blocking;
 use x509_parser::prelude::*;
 
-/// Main function to orchestrate the SSL/TLS scanning process.
-/// It offloads the blocking network operations to a separate thread.
-///
-/// # Arguments
-/// * `target` - A string slice representing the host to scan.
-///
-/// # Returns
-/// An `SslResults` struct containing the scan data and analysis findings.
 pub async fn run_ssl_scan(target: &str) -> SslResults {
-    // The target string must be moved into the new thread, so we create an owned copy.
+    // NUOVO: Logghiamo l'inizio della scansione SSL.
+    info!(target, "Starting SSL/TLS scan.");
     let target_owned = target.to_string();
 
-    // The `native_tls` and `TcpStream` operations are blocking, so we use `spawn_blocking`
-    // to prevent blocking the main Tokio event loop. This is a crucial best practice.
+    // NUOVO: Logghiamo l'intenzione di spostare l'operazione su un thread bloccante.
+    debug!("Spawning blocking task for TLS connection.");
     let scan_result = spawn_blocking(move || {
         perform_tls_scan(&target_owned)
     }).await
-      // Handle potential panics from the blocking task, converting a `JoinError`
-      // into a formatted string error for consistent error handling.
-      .unwrap_or_else(|e| Err(format!("Task panicked: {}", e)));
+      .unwrap_or_else(|e| {
+          // NUOVO: Logghiamo se il task va in panic, che è un errore grave.
+          error!(panic = %e, "Blocking SSL scan task panicked!");
+          Err(format!("Task panicked: {}", e))
+      });
 
-    // Initialize the results struct.
+    // NUOVO: Logghiamo il completamento del task e l'inizio dell'analisi.
+    debug!("SSL scan task finished, starting analysis.");
     let mut results = SslResults {
         scan: scan_result,
         analysis: Vec::new(),
     };
 
-    // Perform the analysis based on the scan results.
     results.analysis = analyze_ssl_results(&results);
+
+    // NUOVO: Logghiamo la fine della scansione con il numero di scoperte.
+    info!(findings = %results.analysis.len(), "SSL/TLS scan finished.");
     results
 }
 
-/// Performs a TLS connection and retrieves the peer's certificate for analysis.
-///
-/// # Arguments
-/// * `target` - The host to connect to.
-///
-/// # Returns
-/// A `ScanResult<SslData>` which is a `Result<Option<SslData>, String>`.
-/// `Ok(Some(...))` indicates a successful scan with data.
-/// `Ok(None)` indicates a successful connection but no certificate.
-/// `Err(...)` indicates a failure.
 fn perform_tls_scan(target: &str) -> ScanResult<SslData> {
-    // A more robust approach would be to use a custom error type instead of
-    // `format!` for better error propagation and debugging.
-    let connector = TlsConnector::new().map_err(|e| format!("TlsConnector Error: {}", e))?;
-    
-    // Defaulting to port 443 is a good assumption for HTTPS.
-    let stream = TcpStream::connect((target, 443)).map_err(|e| format!("TCP Connection Error: {}", e))?;
-    
-    // The TLS handshake is performed here.
-    let stream = connector.connect(target, stream).map_err(|e| format!("TLS Handshake Error: {}", e))?;
+    debug!(target, "Performing TLS connection and handshake.");
 
-    // Attempt to get the peer's certificate.
+    // MODIFICATO: Aggiunto logging in caso di errore.
+    let connector = TlsConnector::new().map_err(|e| {
+        error!(error = %e, "Failed to create TlsConnector");
+        format!("TlsConnector Error: {}", e)
+    })?;
+    
+    debug!(target, "Connecting TCP stream to port 443.");
+    let stream = TcpStream::connect((target, 443)).map_err(|e| {
+        error!(error = %e, "TCP connection failed");
+        format!("TCP Connection Error: {}", e)
+    })?;
+    
+    debug!(target, "Performing TLS handshake.");
+    let stream = connector.connect(target, stream).map_err(|e| {
+        error!(error = %e, "TLS handshake failed");
+        format!("TLS Handshake Error: {}", e)
+    })?;
+
     let cert = match stream.peer_certificate() {
-        Ok(Some(c)) => c,
-        // No certificate found is a valid, non-error state.
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(format!("Could not get peer certificate: {}", e)),
+        Ok(Some(c)) => {
+            debug!("Peer certificate found.");
+            c
+        },
+        Ok(None) => {
+            debug!("TLS connection successful, but no peer certificate provided.");
+            return Ok(None)
+        },
+        Err(e) => {
+            error!(error = %e, "Failed to retrieve peer certificate from stream");
+            return Err(format!("Could not get peer certificate: {}", e))
+        },
     };
 
-    // Convert the certificate to DER format and parse it for detailed info.
-    let cert_der = cert.to_der().map_err(|e| format!("Could not convert certificate to DER: {}", e))?;
-    let (_, x509) = parse_x509_certificate(&cert_der).map_err(|e| format!("X.509 Parse Error: {}", e))?;
+    let cert_der = cert.to_der().map_err(|e| {
+        error!(error = %e, "Failed to convert certificate to DER format");
+        format!("Could not convert certificate to DER: {}", e)
+    })?;
+    
+    let (_, x509) = parse_x509_certificate(&cert_der).map_err(|e| {
+        error!(error = %e, "Failed to parse X.509 certificate");
+        format!("X.509 Parse Error: {}", e)
+    })?;
+
+    // NUOVO: Logghiamo i dettagli del certificato parsato con successo.
+    info!(subject = %x509.subject(), issuer = %x509.issuer(), "Successfully parsed certificate.");
     
     let validity = x509.validity();
     let not_after = asn1_time_to_chrono_utc(&validity.not_after);
     let not_before = asn1_time_to_chrono_utc(&validity.not_before);
     let days_until_expiry = not_after.signed_duration_since(Utc::now()).num_days();
     
-    // Determine if the certificate is currently valid based on its dates.
     let is_valid = Utc::now() > not_before && Utc::now() < not_after;
 
-    // Construct and return the successful result with certificate data.
     Ok(Some(SslData {
         is_valid,
         certificate_info: CertificateInfo {
@@ -93,48 +108,33 @@ fn perform_tls_scan(target: &str) -> ScanResult<SslData> {
     }))
 }
 
-/// Helper to convert `ASN1Time` to a `DateTime<Utc>`.
-///
-/// # Arguments
-/// * `time` - The `ASN1Time` to convert.
-///
-/// # Returns
-/// A `DateTime<Utc>` representing the same point in time.
 fn asn1_time_to_chrono_utc(time: &ASN1Time) -> DateTime<Utc> {
-    // Using `unwrap_or_default()` is safe here, but in a library, you might
-    // want to return a `Result` to handle parsing failures more explicitly.
     DateTime::from_timestamp(time.timestamp(), 0).unwrap_or_default()
 }
 
-/// Analyzes SSL scan results and generates findings.
-///
-/// # Arguments
-/// * `results` - A reference to the `SslResults` struct from the scan.
-///
-/// # Returns
-/// A vector of `AnalysisFinding` structs.
 fn analyze_ssl_results(results: &SslResults) -> Vec<AnalysisFinding> {
+    debug!("Analyzing SSL scan results.");
     let mut analyses = Vec::new();
 
-    // Use a match statement for clean and exhaustive result handling.
     match &results.scan {
         Err(_) => {
-            // A critical finding for any scan failure.
+            debug!("Scan failed, adding SSL_HANDSHAKE_FAILED finding.");
             analyses.push(AnalysisFinding::new(Severity::Critical, "SSL_HANDSHAKE_FAILED"));
         },
         Ok(None) => {
-            // A warning for a successful connection with no certificate.
+            debug!("No certificate found, adding SSL_NO_CERTIFICATE_FOUND finding.");
             analyses.push(AnalysisFinding::new(Severity::Warning, "SSL_NO_CERTIFICATE_FOUND"));
         },
         Ok(Some(ssl_data)) => {
-            // Check for an expired certificate and add a critical finding.
             if !ssl_data.is_valid {
+                // NUOVO: Logghiamo i dettagli sulla scadenza.
+                debug!(expiry_date = %ssl_data.certificate_info.not_after, "Certificate is expired, adding SSL_EXPIRED finding.");
                 analyses.push(AnalysisFinding::new(Severity::Critical, "SSL_EXPIRED"));
             }
 
-            // Check for an expiring certificate and add a warning.
             let days_left = ssl_data.certificate_info.days_until_expiry;
             if (0..=30).contains(&days_left) {
+                debug!(days_left, "Certificate is expiring soon, adding SSL_EXPIRING_SOON finding.");
                 analyses.push(AnalysisFinding::new(Severity::Warning, "SSL_EXPIRING_SOON"));
             }
         }

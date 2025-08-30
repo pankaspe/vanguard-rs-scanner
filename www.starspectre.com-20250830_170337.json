@@ -33,7 +33,7 @@
           "issuer_name": "C=US, O=Google Trust Services, CN=WE1",
           "not_before": "2025-07-28T11:09:52Z",
           "not_after": "2025-10-26T12:09:46Z",
-          "days_until_expiry": 57
+          "days_until_expiry": 56
         }
       }
     },

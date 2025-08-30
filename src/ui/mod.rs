@@ -3,41 +3,38 @@
 use crate::app::{App, AppState};
 use ratatui::prelude::*;
 
-mod layout;
+// Dichiariamo i moduli interni della UI. `layout` è pubblico perché `main.rs` ne ha bisogno.
+pub mod layout;
+// `widgets` è un modulo che a sua volta contiene tutti i nostri widget.
+// Avrai bisogno di un file `src/ui/widgets/mod.rs` che dichiari `pub mod input;` etc.
 mod widgets;
 
-/// The main render function for the user interface.
+/// Funzione di rendering principale per l'intera interfaccia utente.
 ///
-/// This function acts as the central orchestrator for drawing all the TUI widgets
-/// on the screen. It first calculates the layout for all the main components
-/// (input, analysis report, summary, footer) and then calls the respective
-/// widget rendering functions to draw them.
+/// Questa funzione orchestra il disegno di tutti i widget sullo schermo.
+/// Calcola il layout e poi chiama le funzioni di rendering per ogni componente.
+/// Gestisce anche il rendering condizionale del pannello di log e del popup del disclaimer.
 ///
-/// A key feature of this function is the conditional rendering of the disclaimer popup.
-/// It draws the main UI components first, and then, if the application is in the
-/// `AppState::Disclaimer`, it draws the popup on top of the entire frame area,
-/// effectively creating a modal dialog that overlays the rest of the interface.
-///
-/// # Arguments
-///
-/// * `app` - A mutable reference to the `App` struct, which contains the current
-///   state of the application and all the data to be displayed.
-/// * `frame` - A mutable reference to the `Frame` provided by the TUI backend,
-///   which is the canvas for all drawing operations.
+/// # Argomenti
+/// * `app` - Riferimento mutabile allo stato dell'applicazione.
+/// * `frame` - Riferimento mutabile al `Frame` su cui disegnare.
 pub fn render(app: &mut App, frame: &mut Frame) {
-    // 1. Calculate the layout for all main UI components.
-    let layout = layout::create_layout(frame.area());
+    // 1. Calcola il layout dinamico in base allo stato `show_logs`.
+    let app_layout = layout::create_layout(frame.area(), app.show_logs);
 
-    // 2. Render the main UI widgets using the calculated layout areas.
-    // These are always drawn regardless of the application state.
-    widgets::input::render_input(frame, app, layout.input);
-    widgets::analysis_view::render_analysis_view(frame, app, layout.report);
-    widgets::summary::render_summary(frame, app, layout.summary);
-    widgets::footer::render_footer(frame, app, layout.footer);
+    // 2. Renderizza i widget principali nelle loro aree designate.
+    // --- CORREZIONE: La chiamata a `render_input` è stata reinserita qui ---
+    widgets::input::render_input(frame, app, app_layout.input);
+    widgets::analysis_view::render_analysis_view(frame, app, app_layout.report);
+    widgets::summary::render_summary(frame, app, app_layout.summary);
+    widgets::footer::render_footer(frame, app, app_layout.footer);
 
-    // 3. Conditionally render the disclaimer popup.
-    // If the state is `AppState::Disclaimer`, the popup widget is drawn on top
-    // of the entire frame, which `ratatui` handles seamlessly.
+    // 3. Renderizza il pannello di log solo se è visibile.
+    if app.show_logs {
+        widgets::log_view::render_log_view(frame, app, app_layout.log_panel);
+    }
+
+    // 4. Renderizza il popup del disclaimer in cima a tutto il resto se necessario.
     if matches!(app.state, AppState::Disclaimer) {
         widgets::disclaimer_popup::render_disclaimer_popup(frame, frame.area());
     }

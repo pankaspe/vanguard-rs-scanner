@@ -1,93 +1,85 @@
 // src/main.rs
 
+use color_eyre::eyre::Result;
+use tracing::{debug, error, info};
 use crate::app::{App, AppState, ExportStatus};
 use chrono::Local;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{
+        self, Event, KeyCode, KeyEventKind,
+    },
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
+// RIMOSSO: MouseButton e MouseEventKind non sono più necessari.
 use ratatui::prelude::*;
 use std::fs;
-use std::io::{stdout, Result};
+use std::io::stdout;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use url::Url;
 
-// Declare the application's modules.
 mod app;
 mod core;
 mod ui;
+mod logging;
 
-/// The entry point of the application.
-///
-/// This function sets up the terminal in a specific raw mode, initializes the TUI
-/// application state, and enters the main event loop. It handles rendering the UI,
-/// polling for user input and TUI events, and processing messages from the
-/// asynchronous scanning tasks.
 #[tokio::main]
 async fn main() -> Result<()> {
-    // --- Setup (identical) ---
-    // Enters the raw terminal mode and enables mouse capture.
+    logging::initialize_logging()?;
+    info!("Application starting up");
+
     stdout().execute(EnterAlternateScreen)?;
-    stdout().execute(EnableMouseCapture)?;
+    // RIMOSSO: `EnableMouseCapture` non è più necessario.
     enable_raw_mode()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.clear()?;
 
     let mut app = App::new();
-    // Creates an asynchronous channel to receive scan reports from the background task.
     let (tx, mut rx) = mpsc::channel(1);
 
-    // The main application loop.
     while !app.should_quit {
-        // Renders the UI based on the current application state.
-        terminal.draw(|frame| ui::render(&mut app, frame))?;
+        let mut frame_size = Rect::default();
+        terminal.draw(|frame| {
+            frame_size = frame.area();
+            ui::render(&mut app, frame);
+        })?;
 
-        // Polls for events with a timeout to allow for periodic updates.
         if event::poll(Duration::from_millis(100))? {
             handle_events(&mut app, &tx).await?;
         }
 
-        // Checks for a completed scan report from the background task.
         if let Ok(report) = rx.try_recv() {
+            info!(target = %app.input, "Scan finished. Report received.");
             app.scan_report = Some(report);
             app.state = AppState::Finished;
             app.update_summary();
-            app.update_filtered_findings();
+            app.update_findings();
         }
 
-        // Performs a tick to update animations or other periodic state.
         app.on_tick();
     }
 
-    // --- Restore Terminal (identical) ---
-    // Restores the terminal to its original state before exiting.
+    info!("Application shutting down gracefully.");
     stdout().execute(LeaveAlternateScreen)?;
-    stdout().execute(DisableMouseCapture)?;
+    // RIMOSSO: `DisableMouseCapture` non è più necessario.
     disable_raw_mode()?;
     Ok(())
 }
 
-/// A separate event handler function to keep the main loop clean.
-///
-/// It reads key events and delegates handling to a specific function
-/// based on the application's current `AppState`.
+// MODIFICATO: `frame_size` rimosso, non più necessario senza il mouse.
 async fn handle_events(app: &mut App, tx: &mpsc::Sender<core::models::ScanReport>) -> Result<()> {
+    // MODIFICATO: `match` semplificato, gestisce solo `Event::Key`.
     if let Event::Key(key) = event::read()? {
         if key.kind == KeyEventKind::Press {
+            debug!("Key event received: {:?}", key.code);
             match app.state {
-                // NEW LOGIC: If the disclaimer is active, only listen for `Enter`.
                 AppState::Disclaimer => {
-                    if key.code == KeyCode::Enter {
-                        // Transition to the normal `Idle` state.
-                        app.state = AppState::Idle;
-                    }
+                    if key.code == KeyCode::Enter { app.state = AppState::Idle; }
                 }
                 AppState::Idle => handle_idle_input(app, key.code, tx).await,
-                AppState::Finished => handle_finished_input(app, key.code),
+                AppState::Finished => handle_finished_keyboard_input(app, key.code),
                 AppState::Scanning => {
-                    // Quitting is allowed at any time.
                     if key.code == KeyCode::Char('q') { app.quit(); }
                 }
             }
@@ -96,13 +88,7 @@ async fn handle_events(app: &mut App, tx: &mpsc::Sender<core::models::ScanReport
     Ok(())
 }
 
-/// Handles user input when the app is in the `Idle` state.
-///
-/// This function processes character input for the target domain, handles
-/// backspace, and initiates a new scan on `Enter`. It also handles clearing
-/// any previous export status messages.
 async fn handle_idle_input(app: &mut App, key_code: KeyCode, tx: &mpsc::Sender<core::models::ScanReport>) {
-    // Clear any previous export message before accepting new input.
     if !matches!(app.export_status, ExportStatus::Idle) {
         app.export_status = ExportStatus::Idle;
     }
@@ -112,21 +98,19 @@ async fn handle_idle_input(app: &mut App, key_code: KeyCode, tx: &mpsc::Sender<c
         KeyCode::Char(c) => app.input.push(c),
         KeyCode::Backspace => { app.input.pop(); },
         KeyCode::Enter => {
-            // Do nothing if the input is empty.
             if app.input.is_empty() { return; }
             app.state = AppState::Scanning;
             let tx_clone = tx.clone();
             let raw_input = app.input.clone();
             
-            // Prepares the target domain for scanning, ensuring it has a scheme.
             let input_with_scheme = if !raw_input.starts_with("http://") && !raw_input.starts_with("https://") {
                 format!("https://{}", raw_input)
             } else { raw_input };
             let target_domain = Url::parse(&input_with_scheme)
                 .ok().and_then(|url| url.host_str().map(String::from))
                 .unwrap_or_else(|| app.input.clone());
-
-            // Spawns the scan as a background task to prevent blocking the TUI.
+            
+            info!(target = %target_domain, "Initiating new scan");
             tokio::spawn(async move {
                 let report = core::scanner::run_full_scan(&target_domain).await;
                 let _ = tx_clone.send(report).await;
@@ -136,14 +120,27 @@ async fn handle_idle_input(app: &mut App, key_code: KeyCode, tx: &mpsc::Sender<c
     }
 }
 
-/// Handles user input when the scan report is displayed (`Finished` state).
-///
-/// This function allows the user to navigate the report, start a new scan,
-/// export the report to a JSON file, or quit the application.
-fn handle_finished_input(app: &mut App, key_code: KeyCode) {
-    // Clear any previous export message.
+fn handle_finished_keyboard_input(app: &mut App, key_code: KeyCode) {
     if !matches!(app.export_status, ExportStatus::Idle) {
         app.export_status = ExportStatus::Idle;
+    }
+
+    // Se il pannello dei log è visibile, le frecce controllano lo scroll.
+    if app.show_logs {
+        match key_code {
+            // CORREZIONE: SOLO le frecce controllano lo scroll.
+            KeyCode::Left => {
+                app.log_horizontal_scroll = app.log_horizontal_scroll.saturating_sub(1);
+                app.log_horizontal_scroll_state = app.log_horizontal_scroll_state.position(app.log_horizontal_scroll);
+                return;
+            },
+            KeyCode::Right => {
+                app.log_horizontal_scroll = app.log_horizontal_scroll.saturating_add(1);
+                app.log_horizontal_scroll_state = app.log_horizontal_scroll_state.position(app.log_horizontal_scroll);
+                return;
+            },
+            _ => {}
+        }
     }
     
     match key_code {
@@ -151,27 +148,32 @@ fn handle_finished_input(app: &mut App, key_code: KeyCode) {
         KeyCode::Char('n') | KeyCode::Char('N') => app.reset(),
         KeyCode::Char('e') | KeyCode::Char('E') => {
             if let Some(report) = &app.scan_report {
-                // Serializes the report to a pretty-printed JSON string.
                 match serde_json::to_string_pretty(report) {
                     Ok(json_data) => {
                         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
                         let target_domain = app.input.split_once("://").unwrap_or(("", &app.input)).1;
                         let filename = format!("{}-{}.json", target_domain.replace('/', "_"), timestamp);
                         
-                        // Writes the JSON data to a file.
                         match fs::write(&filename, json_data) {
-                            Ok(_) => app.export_status = ExportStatus::Success(filename),
-                            Err(e) => app.export_status = ExportStatus::Error(e.to_string()),
+                            Ok(_) => { info!(filename = %filename, "Report exported successfully"); app.export_status = ExportStatus::Success(filename); },
+                            Err(e) => { error!(error = %e, "Failed to write report to file"); app.export_status = ExportStatus::Error(e.to_string()); },
                         }
                     }
-                    Err(e) => app.export_status = ExportStatus::Error(e.to_string()),
+                    Err(e) => { error!(error = %e, "Failed to serialize report to JSON"); app.export_status = ExportStatus::Error(e.to_string()); },
                 }
             }
         },
-        KeyCode::Right | KeyCode::Char('l') => app.next_analysis_tab(),
-        KeyCode::Left | KeyCode::Char('h') => app.previous_analysis_tab(),
         KeyCode::Down | KeyCode::Char('j') => app.select_next_finding(),
         KeyCode::Up | KeyCode::Char('k') => app.select_previous_finding(),
+        // CORREZIONE: `l`/`L` ora servono SOLO per i log e non sono in conflitto.
+        KeyCode::Char('l') | KeyCode::Char('L') => {
+            app.show_logs = !app.show_logs;
+            debug!(visible = %app.show_logs, "Log panel visibility toggled");
+            if app.show_logs {
+                app.refresh_logs();
+            }
+        },
         _ => {}
     }
 }
+

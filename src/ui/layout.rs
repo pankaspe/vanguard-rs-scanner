@@ -14,7 +14,8 @@ pub struct AppLayout {
     pub input: Rect,
     pub report: Rect,
     pub summary: Rect,
-    pub footer: Rect, // <-- NEW AREA
+    pub footer: Rect,
+    pub log_panel: Rect,
 }
 
 /// Creates the complete application layout.
@@ -31,31 +32,36 @@ pub struct AppLayout {
 ///
 /// # Returns
 /// An `AppLayout` struct containing the calculated `Rect` for each widget area.
-pub fn create_layout(frame_size: Rect) -> AppLayout {
-    // Main vertical layout: [Input], [Content], [Footer]
+pub fn create_layout(frame_size: Rect, show_logs: bool) -> AppLayout { // <-- NUOVO: prende `show_logs`
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // For the input box
-            Constraint::Min(0),    // For the main content
-            Constraint::Length(1), // <-- For our new footer bar
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
         ])
         .split(frame_size);
 
-    // Horizontal layout for the main content area, splitting it into two.
+    // --- NUOVO: Layout Orizzontale Dinamico ---
+    let content_constraints = if show_logs {
+        // Se i log sono visibili: Report (45%), Summary (20%), Log (35%)
+        vec![Constraint::Percentage(45), Constraint::Percentage(20), Constraint::Percentage(35)]
+    } else {
+        // Altrimenti: Report (70%), Summary (30%)
+        vec![Constraint::Percentage(70), Constraint::Percentage(30)]
+    };
+
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(70), // The analysis report will take up 70% of the width.
-            Constraint::Percentage(30), // The summary will take up the remaining 30%.
-        ])
-        .split(main_chunks[1]); // This splits the second chunk from the main vertical layout.
+        .constraints(content_constraints)
+        .split(main_chunks[1]);
 
-    // Return the AppLayout struct with all calculated areas.
     AppLayout {
         input: main_chunks[0],
         report: content_chunks[0],
         summary: content_chunks[1],
-        footer: main_chunks[2], // <-- Assign the new area
+        // Se i log sono visibili, il pannello dei log è il terzo chunk, altrimenti è un'area vuota.
+        log_panel: if show_logs { content_chunks[2] } else { Rect::default() },
+        footer: main_chunks[2],
     }
 }
