@@ -3,6 +3,7 @@
 use crate::app::App;
 use ratatui::{
     prelude::*,
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation},
 };
 
@@ -10,7 +11,8 @@ use ratatui::{
 ///
 /// This widget displays the most recent lines from the application's log file.
 /// It includes a horizontal scrollbar to allow viewing of long log lines that
-/// might otherwise be truncated.
+/// might otherwise be truncated. This version applies custom styling to the
+/// timestamp part of each log line to improve readability.
 ///
 /// # Arguments
 ///
@@ -36,12 +38,38 @@ pub fn render_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
     // Update the scrollbar's state with the total content length.
     app.log_horizontal_scroll_state = app.log_horizontal_scroll_state.content_length(max_width);
 
-    // Create a single Text object from all log lines.
-    let log_text = Text::from(app.log_content.join("\n"));
+    // --- INIZIO CORREZIONE ---
+    // Process each log line to apply custom styling.
+    let log_lines: Vec<Line> = app.log_content.iter().map(|line_str| {
+        // A typical log line looks like: "DATE TIME LEVEL MESSAGE"
+        // We split the line into at most 3 parts based on spaces.
+        let mut parts = line_str.splitn(3, ' ');
+
+        // We use a match to safely handle the parts.
+        match (parts.next(), parts.next(), parts.next()) {
+            // This case matches if we successfully get a date, a time, and the rest of the message.
+            (Some(date), Some(time), Some(rest)) => {
+                // Recombine the date and time to form the full timestamp.
+                let timestamp = format!("{} {}", date, time);
+                // The rest of the line needs a leading space to look correct.
+                let message = format!(" {}", rest);
+
+                // Create a styled Line with a gray timestamp and a regular message.
+                Line::from(vec![
+                    Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
+                    Span::raw(message),
+                ])
+            },
+            // This is a fallback. If a line doesn't match the expected format,
+            // we render it as-is without any special styling.
+            _ => Line::from(line_str.as_str()),
+        }
+    }).collect();
     
-    // Create a Paragraph to display the text, applying the current horizontal scroll offset.
-    let log_paragraph = Paragraph::new(log_text)
+    // Create the Paragraph widget from our collection of styled lines.
+    let log_paragraph = Paragraph::new(log_lines)
         .scroll((0, app.log_horizontal_scroll as u16));
+    // --- FINE CORREZIONE ---
         
     frame.render_widget(log_paragraph, inner_area);
 

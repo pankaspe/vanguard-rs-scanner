@@ -5,7 +5,8 @@ use directories::ProjectDirs;
 use lazy_static::lazy_static;
 use std::path::PathBuf;
 use tracing_error::ErrorLayer;
-use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
+use tracing_subscriber::{self, fmt::time::LocalTime, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
+use time::macros::format_description;
 
 // Lazily evaluated static variables for logging configuration.
 lazy_static! {
@@ -69,8 +70,14 @@ pub fn initialize_logging() -> Result<()> {
         .or_else(|_| std::env::var(LOG_ENV.clone()))
         .unwrap_or_else(|_| format!("{}=info", env!("CARGO_CRATE_NAME")));
 
+    // format date
+    let timer = LocalTime::new(format_description!(
+        "[day]/[month]/[year] [hour]:[minute]:[second]"
+    ));
+
     // Configure the formatting layer for the file subscriber.
     let file_subscriber = tracing_subscriber::fmt::layer()
+        .with_timer(timer)
         .with_writer(log_file)      // Write logs to the created file.
         .with_target(false)         // Do not include the target path in the log output.
         .with_ansi(false)           // Disable ANSI color codes in the file.
