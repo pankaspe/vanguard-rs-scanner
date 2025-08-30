@@ -228,8 +228,8 @@ fn handle_finished_keyboard_input(app: &mut App, key_code: KeyCode) {
             }
         },
         // Navigation controls for the findings list.
-        KeyCode::Down | KeyCode::Char('j') => app.select_next_finding(),
-        KeyCode::Up | KeyCode::Char('k') => app.select_previous_finding(),
+        KeyCode::Down => app.select_next_finding(),
+        KeyCode::Up => app.select_previous_finding(),
         // Toggle the visibility of the log panel.
         KeyCode::Char('l') | KeyCode::Char('L') => {
             app.show_logs = !app.show_logs;
