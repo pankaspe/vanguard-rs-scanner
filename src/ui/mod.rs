@@ -3,38 +3,40 @@
 use crate::app::{App, AppState};
 use ratatui::prelude::*;
 
-// Dichiariamo i moduli interni della UI. `layout` è pubblico perché `main.rs` ne ha bisogno.
+// Declare the modules responsible for UI rendering.
+// `layout` is made public as it defines the core layout structure.
 pub mod layout;
-// `widgets` è un modulo che a sua volta contiene tutti i nostri widget.
-// Avrai bisogno di un file `src/ui/widgets/mod.rs` che dichiari `pub mod input;` etc.
+// `widgets` contains the rendering logic for individual UI components.
+// This module is expected to have its own `mod.rs` file (e.g., `src/ui/widgets/mod.rs`)
+// that declares sub-modules for each widget.
 mod widgets;
 
-/// Funzione di rendering principale per l'intera interfaccia utente.
+/// The main rendering function for the entire user interface.
 ///
-/// Questa funzione orchestra il disegno di tutti i widget sullo schermo.
-/// Calcola il layout e poi chiama le funzioni di rendering per ogni componente.
-/// Gestisce anche il rendering condizionale del pannello di log e del popup del disclaimer.
+/// This function orchestrates the drawing of all widgets onto the frame.
+/// It first calculates the layout based on the current state, then calls the
+/// specific rendering functions for each component. It also handles conditional
+/// rendering, such as displaying the log panel or the disclaimer popup.
 ///
-/// # Argomenti
-/// * `app` - Riferimento mutabile allo stato dell'applicazione.
-/// * `frame` - Riferimento mutabile al `Frame` su cui disegnare.
+/// # Arguments
+/// * `app` - A mutable reference to the application's state.
+/// * `frame` - A mutable reference to the `Frame` on which to draw.
 pub fn render(app: &mut App, frame: &mut Frame) {
-    // 1. Calcola il layout dinamico in base allo stato `show_logs`.
+    // 1. Calculate the dynamic layout based on whether the log panel is visible.
     let app_layout = layout::create_layout(frame.area(), app.show_logs);
 
-    // 2. Renderizza i widget principali nelle loro aree designate.
-    // --- CORREZIONE: La chiamata a `render_input` è stata reinserita qui ---
+    // 2. Render the primary UI widgets in their designated areas.
     widgets::input::render_input(frame, app, app_layout.input);
     widgets::analysis_view::render_analysis_view(frame, app, app_layout.report);
     widgets::summary::render_summary(frame, app, app_layout.summary);
     widgets::footer::render_footer(frame, app, app_layout.footer);
 
-    // 3. Renderizza il pannello di log solo se è visibile.
+    // 3. Conditionally render the log panel if it's enabled.
     if app.show_logs {
         widgets::log_view::render_log_view(frame, app, app_layout.log_panel);
     }
 
-    // 4. Renderizza il popup del disclaimer in cima a tutto il resto se necessario.
+    // 4. If the app is in the `Disclaimer` state, render the popup as an overlay.
     if matches!(app.state, AppState::Disclaimer) {
         widgets::disclaimer_popup::render_disclaimer_popup(frame, frame.area());
     }
